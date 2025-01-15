@@ -6,8 +6,13 @@ const { initializeDatabase } = require('./db/init');
 const authRoutes = require('./routes/auth');
 const reservationRoutes = require('./routes/reservations');
 
-// Add this debug log
-console.log('Using MongoDB URI from:', process.env.MONGODB_URI ? '.env file' : 'default config');
+// Debug MongoDB URI selection
+const mongoUri = process.env.MONGODB_URI || require('./config/production').mongoUri;
+console.log('Selected MongoDB URI:', mongoUri.replace(/:[^:]*@/, ':****@'));
+
+if (mongoUri.includes('localhost')) {
+    console.warn('WARNING: Using local MongoDB instance instead of Atlas cluster');
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -31,7 +36,7 @@ app.get('/api/healthcheck', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
-connectToDb(process.env.MONGODB_URI)
+connectToDb(mongoUri)
   .then(async () => {
     console.log('Connected to database, initializing...');
     await initializeDatabase();

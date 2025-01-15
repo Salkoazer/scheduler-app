@@ -30,24 +30,16 @@ const connectToDb = async (uri) => {
         
         console.log('Successfully connected to:', {
             uri: uri.replace(/:[^:]*@/, ':****@'),
-            database: dbName,
-            isConnected: client.isConnected()
+            database: dbName
         });
 
         // Extract and log cluster information from URI
         const clusterInfo = uri.match(/@(.*?)\//);
         console.log('Attempting to connect to cluster:', clusterInfo ? clusterInfo[1] : 'unknown');
         
-        console.log('Connecting to MongoDB with URI:', uri.replace(/:[^:]*@/, ':****@')); // Hide password in logs
-        
         // Get deployment information
         const serverInfo = await client.db().admin().serverInfo();
         console.log('Connected to MongoDB version:', serverInfo.version);
-        console.log('Cluster connection string:', uri.replace(/:([^:@]+)@/, ':****@'));
-        
-        console.log('Connected to MongoDB');
-        console.log('Database name:', db.databaseName);
-        console.log('Current database:', client.db().databaseName);
         
         // List all databases
         const dbs = await client.db().admin().listDatabases();
@@ -57,7 +49,7 @@ const connectToDb = async (uri) => {
         const collections = await db.listCollections().toArray();
         console.log('Collections in current database:', collections.map(c => c.name));
         
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        console.log("Successfully connected to MongoDB!");
     } catch (err) {
         console.error('MongoDB connection error:', err);
         isConnecting = false;

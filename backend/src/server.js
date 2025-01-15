@@ -1,12 +1,30 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
+// Debug: Show initial process.env values
+console.log('Initial process.env:', {
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set from system' : 'Not set',
+    PORT: process.env.PORT ? 'Set from system' : 'Not set',
+    NODE_ENV: process.env.NODE_ENV ? 'Set from system' : 'Not set'
+});
+
 // Load environment variables from .env file
-const result = dotenv.config({ path: path.resolve(__dirname, '../.env') });
-if (result.error) {
-    console.error('Error loading .env file:', result.error);
-    process.exit(1);
-}
+const envPath = path.resolve(__dirname, '../.env');
+console.log('Loading .env from:', envPath);
+const result = dotenv.config({ path: envPath });
+
+// Debug: Show which variables were loaded from .env
+console.log('.env file load result:', {
+    error: result.error ? 'Failed to load' : 'Loaded successfully',
+    parsed: result.parsed ? Object.keys(result.parsed) : []
+});
+
+// Debug: Show process.env after .env load
+console.log('After .env load:', {
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set from .env' : 'Not set',
+    PORT: process.env.PORT ? 'Set from .env' : 'Not set',
+    NODE_ENV: process.env.NODE_ENV ? 'Set from .env' : 'Not set'
+});
 
 const express = require('express');
 const cors = require('cors');
@@ -15,9 +33,15 @@ const { initializeDatabase } = require('./db/init');
 const authRoutes = require('./routes/auth');
 const reservationRoutes = require('./routes/reservations');
 
+// Debug: Show production config values
+const productionConfig = require('../config/production');
+console.log('Production config values:', {
+    mongoUri: productionConfig.mongoUri ? 'Set' : 'Not set',
+    port: productionConfig.port ? 'Set' : 'Not set'
+});
+
 // Debug MongoDB URI selection with more detailed logging
 const configuredUri = process.env.MONGODB_URI;
-const productionConfig = require('../config/production');
 const mongoUri = configuredUri || productionConfig.mongoUri;
 
 console.log('Environment variables loaded:', {

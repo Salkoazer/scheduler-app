@@ -6,6 +6,9 @@ const { initializeDatabase } = require('./db/init');
 const authRoutes = require('./routes/auth');
 const reservationRoutes = require('./routes/reservations');
 
+// Add this debug log
+console.log('Using MongoDB URI from:', process.env.MONGODB_URI ? '.env file' : 'default config');
+
 const app = express();
 const port = process.env.PORT || 3000;
 

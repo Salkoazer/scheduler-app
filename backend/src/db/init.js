@@ -1,7 +1,14 @@
 const { getDb } = require('./connection');
 const bcrypt = require('bcrypt');
 
+let isInitialized = false;
+
 async function initializeDatabase() {
+    if (isInitialized) {
+        console.log('Database already initialized');
+        return;
+    }
+
     try {
         const db = getDb();
         
@@ -30,6 +37,7 @@ async function initializeDatabase() {
             console.log('Admin user already exists');
         }
         
+        isInitialized = true;
     } catch (error) {
         console.error('Database initialization failed:', error);
         throw error;

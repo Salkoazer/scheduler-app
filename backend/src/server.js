@@ -8,11 +8,17 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors({
-    origin: ['http://localhost:9000', 'https://main.d2mypo62hcjz5y.amplifyapp.com'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
-}));
+// Configure CORS
+const corsOptions = {
+  origin: ['http://localhost:9000', 'https://calendariocoliseu.site'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Preflight request handling
+
 app.use(express.json());
 
 app.use('/api/auth', authRoutes); // Ensure auth routes are prefixed correctly

@@ -9,11 +9,13 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Configure CORS
+const allowedOrigins = ['http://localhost:9000', 'https://calendariocoliseu.site'];
+
 const corsOptions = {
     origin: (origin, callback) => {
-        if (!origin || origin === 'http://localhost:9000') {
-            // Allow requests with no origin (like mobile apps or curl requests)
-            // and requests from localhost
+        // Allow requests with no origin (like mobile apps or curl requests)
+        // and requests from allowed origins
+        if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
@@ -24,15 +26,7 @@ const corsOptions = {
     credentials: true
 };
 
-app.use((req, res, next) => {
-    if (req.headers.origin === 'http://localhost:9000') {
-        // Skip CORS for localhost
-        next();
-    } else {
-        cors(corsOptions)(req, res, next);
-    }
-});
-
+app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Preflight request handling
 
 app.use(express.json());

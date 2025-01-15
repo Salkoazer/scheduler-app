@@ -1,0 +1,55 @@
+{
+  "name": "scheduler-frontend",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "webpack serve --config webpack.config.js",
+    "build": "webpack --config webpack.config.js",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.0",
+    "date-fns": "^4.1.0",
+    "react": "^18.2.0",
+    "react-datepicker": "^4.25.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.15.0",
+    "react-scripts": "5.0.1",
+    "stream-browserify": "^3.0.0",
+    "typescript": "^4.9.5",
+    "vm-browserify": "^1.1.2",
+    "webpack-cli": "^6.0.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.22.9",
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@babel/plugin-transform-nullish-coalescing-operator": "^7.22.5",
+    "@babel/plugin-transform-optional-catch-binding": "^7.22.5",
+    "@babel/plugin-transform-runtime": "^7.22.9",
+    "@babel/preset-env": "^7.22.9",
+    "@babel/preset-react": "^7.22.5",
+    "@babel/preset-typescript": "^7.22.5",
+    "@babel/runtime-corejs3": "^7.22.6",
+    "@types/axios": "^0.14.4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^18.19.70",
+    "@types/react": "^18.2.0",
+    "@types/react-datepicker": "^6.2.0",
+    "@types/react-dom": "^18.2.0",
+    "ts-loader": "^9.4.2"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

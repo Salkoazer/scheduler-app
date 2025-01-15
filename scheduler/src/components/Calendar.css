@@ -1,0 +1,210 @@
+body {
+    background-color: #e0e0e0;
+    margin: 0;
+    font-family: 'Arial', sans-serif;
+}
+
+.calendar-container {
+    padding: 20px;
+    margin: 20px;
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    background-color: #000;
+    padding: 10px;
+    border-radius: 5px;
+    color: #fff;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+}
+
+.calendar-day {
+    border: 1px solid #ccc;
+    background-color: #f9f9f9;
+    padding: 40px;
+    text-align: left;
+    cursor: pointer;
+    position: relative;
+    height: 100px;
+    overflow: hidden;
+}
+
+.calendar-day.blank {
+    background-color: transparent;
+    border: none;
+    cursor: default;
+}
+
+.calendar-day .day-number {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    font-weight: bold;
+}
+
+.calendar-day.reservation {
+    background-color: #a19c70;
+}
+
+.calendar-day .reservation-name {
+    margin-top: 10px;
+    font-size: 0.9em;
+    color: #333;
+    text-overflow: ellipsis;
+    font-weight: bold; /* Make the reservation name bold */
+    text-align: center; /* Center the reservation name */
+}
+
+.popup {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.popup-content {
+    background: white;
+    padding: 20px;
+    border-radius: 5px;
+    width: 600px;
+    max-height: 90%;
+    overflow-y: auto;
+}
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.calendar-weekday {
+    text-align: center;
+    font-weight: bold;
+    padding: 10px;
+    background-color: #ffe5b4;
+    border: 1px solid #ccc;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    gap: 20px;
+}
+
+.locale-toggle {
+    position: relative;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+.locale-toggle button {
+    padding: 5px 10px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+.user-info span {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.user-info button {
+    padding: 5px 10px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.date-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 20px; /* Increased gap between date entries */
+}
+
+.date-entry {
+    background-color: #f9f9f9;
+    padding: 15px 25px; /* Increased horizontal padding */
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    width: auto; /* Change from 95% to auto to adapt to content */
+    min-width: 80%; /* Ensure minimum width */
+    max-width: 95%; /* Ensure it doesn't get too wide */
+    margin: 0 auto; /* Center the container */
+}
+
+.date-entry-header {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Increased gap between elements */
+    flex-wrap: wrap; /* Allow elements to wrap if needed */
+    padding: 5px 0; /* Add some vertical padding */
+}
+
+.date-entry select {
+    height: 36px; /* Match height with the placeholder display */
+    padding: 0 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    min-width: 150px;
+}
+
+.date-entry input,
+.placeholder-display {
+    height: 20px;  /* Match the height of regular input fields */
+    line-height: 20px;
+    padding: 5px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #fff;
+}
+
+.placeholder-display {
+    flex-grow: 1;
+}
+
+.notes-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+}
+
+.notes-checkbox input[type="checkbox"] {
+    margin: 0;
+}
+
+.notes-textarea {
+    margin-top: 15px;
+    width: 100%;
+    min-height: 120px; /* Larger default size */
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    resize: vertical;
+}

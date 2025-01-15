@@ -4,7 +4,7 @@ const { getDb } = require('../db/connection');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-router.post('/authenticate', async (req, res) => {
+router.post('/', async (req, res) => {
     const { username, password } = req.body;
     console.log(`Authenticating user: ${username}`);
     const db = getDb();
@@ -16,7 +16,6 @@ router.post('/authenticate', async (req, res) => {
     }
 
     console.log(`User found: ${user.username}`);
-    console.log(`Stored password hash: ${user.password}`);
 
     const passwordMatch = await bcrypt.compare(password, user.password);
     console.log(`Password match: ${passwordMatch}`);

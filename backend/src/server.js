@@ -10,7 +10,7 @@ const port = process.env.PORT || 3000;
 
 // Configure CORS
 const corsOptions = {
-  origin: ['http://localhost:9000', 'https://calendariocoliseu.site'],
+  origin: ['http://localhost:9000', 'https://main.d2mypo62hcjz5y.amplifyapp.com'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true

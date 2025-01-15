@@ -1,28 +1,49 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { connectToDb } = require('./db/connection');
+const { connectToDb } = require('./db/connection.js'); // Ensure the correct path and file extension
 const authRoutes = require('./routes/auth');
 const reservationRoutes = require('./routes/reservations');
-require('dotenv').config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
 
 // Configure CORS
 const corsOptions = {
-  origin: ['http://localhost:9000', 'https://main.d2mypo62hcjz5y.amplifyapp.com'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+    origin: (origin, callback) => {
+        if (!origin || origin === 'http://localhost:9000') {
+            // Allow requests with no origin (like mobile apps or curl requests)
+            // and requests from localhost
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
 };
 
-app.use(cors(corsOptions));
+app.use((req, res, next) => {
+    if (req.headers.origin === 'http://localhost:9000') {
+        // Skip CORS for localhost
+        next();
+    } else {
+        cors(corsOptions)(req, res, next);
+    }
+});
+
 app.options('*', cors(corsOptions)); // Preflight request handling
 
 app.use(express.json());
 
-app.use('/api/auth', authRoutes); // Ensure auth routes are prefixed correctly
-app.use('/api/reservations', reservationRoutes); // Ensure reservation routes are prefixed correctly
+app.use('/api', authRoutes);
+app.use('/api', reservationRoutes);
+
+// Health check endpoint
+app.get('/api/healthcheck', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
 
 connectToDb(process.env.MONGODB_URI).then(() => {
   app.listen(port, () => {

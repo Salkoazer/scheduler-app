@@ -39,6 +39,7 @@ const reservationRoutes = require('./routes/reservations');
 const rateLimiter = require('./middleware/rateLimiter');
 const secureHeaders = require('./middleware/secureHeaders');
 const authRateLimiter = require('./middleware/authRateLimiter');
+const { ensureCsrfCookie, verifyCsrf, csrfTokenRoute } = require('./middleware/csrf');
 
 // Debug: Show production config values
 const productionConfig = require('../config/production');
@@ -136,6 +137,9 @@ app.use(cookieParser());
 // Apply secure headers middleware
 app.use(secureHeaders);
 
+// CSRF: ensure token cookie on safe methods
+app.use(ensureCsrfCookie);
+
 // Enforce HTTPS in production (behind proxy/load balancer)
 app.set('trust proxy', 1);
 if (process.env.NODE_ENV === 'production') {
@@ -149,6 +153,9 @@ if (process.env.NODE_ENV === 'production') {
 
 // Apply rate limiting middleware
 app.use(rateLimiter);
+
+// CSRF: verify on state-changing requests
+app.use(verifyCsrf);
 
 // Mount routes with correct prefixes
 // Apply stricter rate limits for auth routes
@@ -166,6 +173,9 @@ app._router.stack.forEach(function(r){
 app.get('/api/healthcheck', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
+
+// CSRF token rotation endpoint
+app.get('/api/csrf', csrfTokenRoute);
 
 connectToDb(mongoUri)
   .then(async () => {

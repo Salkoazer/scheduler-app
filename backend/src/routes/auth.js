@@ -40,8 +40,8 @@ router.post('/', validateBody(authSchema), async (req, res) => {
         };
     logger.info({ cookieOptions }, 'Authentication successful, setting cookie');
         res.cookie('token', token, cookieOptions);
-        // Also return token in body for clients that use Authorization header
-        res.status(200).json({ message: 'Authentication successful', token });
+    // Cookie set; no need to return token in body
+    res.status(200).json({ message: 'Authentication successful' });
     } else {
     logger.warn('Invalid credentials');
         res.status(401).json({ error: 'Invalid credentials' });

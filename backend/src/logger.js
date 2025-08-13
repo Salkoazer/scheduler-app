@@ -6,7 +6,12 @@ const opts = {
   level,
   base: null, // don't add pid/hostname
   redact: {
-    paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers'],
+    paths: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'res.headers',
+      'req.body.password'
+    ],
     remove: true
   }
 };

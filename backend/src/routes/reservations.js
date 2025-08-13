@@ -20,7 +20,6 @@ const listQuerySchema = rangeSchema.extend({
 // Validate reservation payloads
 const reservationSchema = z.object({
     room: z.string().min(1),
-    reservationNumber: z.string().min(1),
     nif: z.string().regex(/^\d{9}$/, 'NIF must be 9 digits'),
     producerName: z.string().min(1),
     email: z.string().email(),

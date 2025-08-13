@@ -22,7 +22,8 @@ const reservationSchema = z.object({
     responsablePerson: z.string().min(1),
     event: z.string().min(1),
     eventClassification: z.string().min(1),
-    author: z.string().min(1),
+    // author is derived from token server-side; accept but ignore if present
+    author: z.string().min(1).optional(),
     isActive: z.boolean().optional().default(true),
     date: z.string().datetime(),
     type: z.enum(['event', 'assembly', 'disassembly', 'others']),
@@ -57,6 +58,9 @@ router.post('/', authenticateToken, validateBody(reservationSchema), async (req,
             ...req.body,
             // Ensure date is stored as ISO string for consistent range queries
             date: new Date(req.body.date).toISOString(),
+            // Do not trust client for author/isActive
+            author: req.user && req.user.username ? req.user.username : 'unknown',
+            isActive: true,
             createdAt: new Date(),
             status: 'active'
         };

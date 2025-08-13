@@ -33,20 +33,28 @@ async function initializeDatabase() {
             console.warn('Failed creating indexes for reservations:', e.message);
         }
 
-        // Check if admin user exists
-        const adminUser = await db.collection('credentials').findOne({ username: 'admin' });
-        
-        if (!adminUser) {
-            console.log('Creating admin user...');
-            const hashedPassword = await bcrypt.hash('admin', 10);
-            await db.collection('credentials').insertOne({
-                username: 'admin',
-                password: hashedPassword,
-                createdAt: new Date()
-            });
-            console.log('Admin user created successfully');
-        } else {
-            console.log('Admin user already exists');
+        // Ensure unique index on credentials.username
+        try {
+            await db.collection('credentials').createIndex({ username: 1 }, { unique: true, name: 'uniq_credentials_username' });
+        } catch (e) {
+            console.warn('Failed to ensure unique index on credentials.username:', e.message);
+        }
+
+        // Seed admin only in non-production environments
+        if (process.env.NODE_ENV !== 'production') {
+            const adminUser = await db.collection('credentials').findOne({ username: 'admin' });
+            if (!adminUser) {
+                console.log('Creating admin user...');
+                const hashedPassword = await bcrypt.hash('admin', 10);
+                await db.collection('credentials').insertOne({
+                    username: 'admin',
+                    password: hashedPassword,
+                    createdAt: new Date()
+                });
+                console.log('Admin user created successfully');
+            } else {
+                console.log('Admin user already exists');
+            }
         }
         
         isInitialized = true;

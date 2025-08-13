@@ -117,7 +117,7 @@ app.use((req, res, next) => {
         'access-control-allow-methods': pick('access-control-allow-methods'),
         'access-control-allow-headers': pick('access-control-allow-headers'),
         'vary': pick('vary'),
-        'set-cookie': pick('set-cookie')
+           // do not print set-cookie content
       });
     } else {
       console.log(`${res.statusCode} ${method} ${originalUrl}`);

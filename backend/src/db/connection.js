@@ -1,4 +1,5 @@
 const { MongoClient } = require('mongodb');
+const logger = require('../logger');
 
 let db;
 let isConnecting = false;
@@ -12,7 +13,7 @@ const connectToDb = async (uri) => {
         isConnecting = true;
         
         if (!uri || uri.includes('localhost')) {
-            console.error('Invalid or local MongoDB URI detected. Please check your MONGO_URI environment variable.');
+            logger.error('Invalid or local MongoDB URI detected. Please check your MONGO_URI environment variable.');
             throw new Error('Invalid MongoDB URI');
         }
 
@@ -29,30 +30,30 @@ const connectToDb = async (uri) => {
         const dbName = uri.split('/').pop().split('?')[0] || 'schedule-app-database';
         db = client.db(dbName);
         
-        console.log('Successfully connected to:', {
+    logger.info({
             uri: uri.replace(/:\/\/.*?:.*?@/, '://****:****@'), // Mask credentials
             database: dbName
-        });
+    }, 'Successfully connected to:');
 
         // Extract and log cluster information from URI
         const clusterInfo = uri.match(/@(.*?)\//);
-        console.log('Attempting to connect to cluster:', clusterInfo ? clusterInfo[1] : 'unknown');
+    logger.debug({ cluster: clusterInfo ? clusterInfo[1] : 'unknown' }, 'Attempting to connect to cluster');
         
         // Get deployment information
-        const serverInfo = await client.db().admin().serverInfo();
-        console.log('Connected to MongoDB version:', serverInfo.version);
+    const serverInfo = await client.db().admin().serverInfo();
+    logger.info({ version: serverInfo.version }, 'Connected to MongoDB');
         
         // List all databases
-        const dbs = await client.db().admin().listDatabases();
-        console.log('Available databases:', dbs.databases.map(db => db.name));
+    const dbs = await client.db().admin().listDatabases();
+    logger.debug({ dbs: dbs.databases.map(db => db.name) }, 'Available databases');
         
         // List all collections in current database
-        const collections = await db.listCollections().toArray();
-        console.log('Collections in current database:', collections.map(c => c.name));
+    const collections = await db.listCollections().toArray();
+    logger.debug({ collections: collections.map(c => c.name) }, 'Collections in current database');
         
-        console.log("Successfully connected to MongoDB!");
+    logger.info('Successfully connected to MongoDB!');
     } catch (err) {
-        console.error('MongoDB connection error:', err);
+    logger.error({ err: err.message }, 'MongoDB connection error');
         isConnecting = false;
         throw err;
     }

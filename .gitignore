@@ -21,6 +21,8 @@
 # logs
 npm-debug.log*
 yarn-debug.log*
+.DS_Store
+backend/backups/
 yarn-error.log*
 
 # IDE

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/connection');
 const { ObjectId } = require('mongodb');
-const jwt = require('jsonwebtoken');
+const { verifyToken } = require('../utils/jwt');
 const { z } = require('zod');
 const { validateQuery, validateBody } = require('../middleware/validate');
 const writeRateLimiter = require('../middleware/writeRateLimiter');
@@ -48,11 +48,13 @@ const authenticateToken = (req, res, next) => {
         return res.status(401).json({ message: 'Missing auth token' });
     }
 
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ message: 'Invalid token' });
+    try {
+        const user = verifyToken(token);
         req.user = user;
         next();
-    });
+    } catch (err) {
+        return res.status(403).json({ message: 'Invalid token' });
+    }
 };
 
 // Create new reservation

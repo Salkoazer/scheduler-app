@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/connection');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const { signToken, verifyToken } = require('../utils/jwt');
 const { z } = require('zod');
 const { validateBody } = require('../middleware/validate');
 
@@ -29,7 +29,7 @@ router.post('/', validateBody(authSchema), async (req, res) => {
     logger.debug({ match: isPasswordValid }, 'Password match result');
 
     if (isPasswordValid) {
-        const token = jwt.sign({ username }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = signToken({ username });
         const isProd = process.env.NODE_ENV === 'production';
         // In production, allow cross-site cookie (requires HTTPS)
         const cookieOptions = {
@@ -71,7 +71,7 @@ router.get('/me', (req, res) => {
     try {
         const token = (req.cookies && req.cookies.token) || null;
         if (!token) return res.status(401).json({ message: 'Not authenticated' });
-        const user = jwt.verify(token, process.env.JWT_SECRET);
+    const user = verifyToken(token);
         res.status(200).json({ username: user.username });
     } catch (e) {
         res.status(401).json({ message: 'Not authenticated' });

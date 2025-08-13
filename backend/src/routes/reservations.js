@@ -4,14 +4,20 @@ const { getDb } = require('../db/connection');
 const { ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 
-// Middleware to authenticate JWT token
+// Middleware to authenticate JWT token (from Authorization header or cookie)
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.sendStatus(401);
+    const headerToken = authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.split(' ')[1]
+        : null;
+    const cookieToken = req.cookies && req.cookies.token ? req.cookies.token : null;
+    const token = headerToken || cookieToken;
+    if (!token) {
+        return res.status(401).json({ message: 'Missing auth token' });
+    }
 
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) return res.sendStatus(403);
+        if (err) return res.status(403).json({ message: 'Invalid token' });
         req.user = user;
         next();
     });

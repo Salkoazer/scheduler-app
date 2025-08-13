@@ -19,6 +19,7 @@ const connectToDb = async (uri) => {
         const client = new MongoClient(uri, { 
             useNewUrlParser: true, 
             useUnifiedTopology: true,
+            maxPoolSize: 10, // Correct option for connection pooling
             serverSelectionTimeoutMS: 5000 // Add timeout
         });
 
@@ -29,7 +30,7 @@ const connectToDb = async (uri) => {
         db = client.db(dbName);
         
         console.log('Successfully connected to:', {
-            uri: uri.replace(/:[^:]*@/, ':****@'),
+            uri: uri.replace(/:\/\/.*?:.*?@/, '://****:****@'), // Mask credentials
             database: dbName
         });
 

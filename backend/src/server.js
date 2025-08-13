@@ -1,30 +1,33 @@
 const path = require('path');
 const dotenv = require('dotenv');
+const pinoHttp = require('pino-http');
+const logger = require('./logger');
+const requestId = require('./middleware/requestId');
 
 // Debug: Show initial process.env values
-console.log('Initial process.env:', {
+logger.info({
   MONGO_URI: process.env.MONGO_URI ? 'Set from system' : 'Not set',
   PORT: process.env.PORT ? 'Set from system' : 'Not set',
   NODE_ENV: process.env.NODE_ENV ? 'Set from system' : 'Not set'
-});
+}, 'Initial process.env');
 
 // Load environment variables from .env file
 const envPath = path.resolve(__dirname, '../.env');
-console.log('Loading .env from:', envPath);
+logger.debug({ envPath }, 'Loading .env');
 const result = dotenv.config({ path: envPath });
 
 // Debug: Show which variables were loaded from .env
-console.log('.env file load result:', {
+logger.debug({
     error: result.error ? 'Failed to load' : 'Loaded successfully',
     parsed: result.parsed ? Object.keys(result.parsed) : []
-});
+}, '.env file load result');
 
 // Debug: Show process.env after .env load
-console.log('After .env load:', {
+logger.info({
   MONGO_URI: process.env.MONGO_URI ? 'Set from .env' : 'Not set',
   PORT: process.env.PORT ? 'Set from .env' : 'Not set',
   NODE_ENV: process.env.NODE_ENV ? 'Set from .env' : 'Not set'
-});
+}, 'After .env load');
 
 const express = require('express');
 const cors = require('cors');
@@ -39,28 +42,30 @@ const authRateLimiter = require('./middleware/authRateLimiter');
 
 // Debug: Show production config values
 const productionConfig = require('../config/production');
-console.log('Production config values:', {
+logger.debug({
     mongoUri: productionConfig.mongoUri ? 'Set' : 'Not set',
     port: productionConfig.port ? 'Set' : 'Not set'
-});
+}, 'Production config values');
 
 // Debug MongoDB URI selection with more detailed logging
 const configuredUri = process.env.MONGO_URI;
 const mongoUri = configuredUri || productionConfig.mongoUri;
 
-console.log('Environment variables loaded:', {
+logger.info({
   MONGO_URI: configuredUri ? 'Set' : 'Not set',
   PORT: process.env.PORT || 'Not set',
   NODE_ENV: process.env.NODE_ENV || 'Not set'
-});
+}, 'Environment variables loaded');
 
-console.log('Selected MongoDB URI:', mongoUri.replace(/:[^:]*@/, ':****@'));
+logger.info({ mongoUri: mongoUri.replace(/:[^:]*@/, ':****@') }, 'Selected MongoDB URI');
 
 if (mongoUri.includes('localhost')) {
-    console.warn('WARNING: Using local MongoDB instance instead of Atlas cluster');
+  logger.warn('WARNING: Using local MongoDB instance instead of Atlas cluster');
 }
 
 const app = express();
+app.use(requestId);
+app.use(pinoHttp({ logger }));
 const port = process.env.PORT || 3000;
 
 // CORS: allow selected origins and log decisions
@@ -123,7 +128,7 @@ app.use((req, res, next) => {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-app.use(express.json());
+app.use(express.json({ limit: '200kb' }));
 app.use(cookieParser());
 
 // Apply secure headers middleware

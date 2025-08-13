@@ -1,0 +1,30 @@
+name: Production Secrets Reminder
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required secrets
+        id: check
+        run: |
+          missing=()
+          req=(PROD_MONGO_URI)
+          for s in "${req[@]}"; do
+            if [ -z "${{ secrets[s] }}" ]; then
+              missing+=("$s")
+            fi
+          done
+          echo "missing=${missing[*]}" >> $GITHUB_OUTPUT
+      - name: Open reminder issue if missing
+        if: steps.check.outputs.missing != ''
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Production secrets not configured: ${{ steps.check.outputs.missing }}"
+          content-filepath: .github/ISSUE_TEMPLATE/production-cutover.md
+          labels: ops, production

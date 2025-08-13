@@ -4,7 +4,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+  "dev": "nodemon src/server.js",
+  "test:smoke": "bash ./scripts/smoke.sh"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
@@ -16,7 +17,10 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.0",
     "mongodb": "^5.7.0",
-    "mongoose": "^7.4.1"
+    "mongoose": "^7.4.1",
+    "pino": "^9.3.2",
+    "pino-http": "^10.3.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",

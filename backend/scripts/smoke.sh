@@ -32,7 +32,10 @@ curl -si -H "Origin: $ORIGIN" -H "Content-Type: application/json" -H "X-CSRF-Tok
   -b "$COOKIE_FILE" -c "$COOKIE_FILE" \
   -d '{"username":"admin","password":"admin"}' "$API/api/auth" | sed -n '1,120p'
 
-printf "\n[6/6] Authenticated /api/reservations (1 week range)...\n"
+printf "\n[6/7] Who am I (/api/auth/me)...\n"
+curl -si -H "Origin: $ORIGIN" -b "$COOKIE_FILE" "$API/api/auth/me" | sed -n '1,120p'
+
+printf "\n[7/7] Authenticated /api/reservations (1 week range)...\n"
 START=$(date -u +%Y-%m-%dT00:00:00.000Z)
 END=$(date -u -d "+7 days" +%Y-%m-%dT23:59:59.999Z)
 curl -si -H "Origin: $ORIGIN" -b "$COOKIE_FILE" "$API/api/reservations?start=$START&end=$END" | sed -n '1,120p'

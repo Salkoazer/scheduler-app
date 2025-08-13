@@ -65,3 +65,15 @@ router.post('/logout', (req, res) => {
 });
 
 module.exports = router;
+
+// Authenticated user info (whoami)
+router.get('/me', (req, res) => {
+    try {
+        const token = (req.cookies && req.cookies.token) || null;
+        if (!token) return res.status(401).json({ message: 'Not authenticated' });
+        const user = jwt.verify(token, process.env.JWT_SECRET);
+        res.status(200).json({ username: user.username });
+    } catch (e) {
+        res.status(401).json({ message: 'Not authenticated' });
+    }
+});

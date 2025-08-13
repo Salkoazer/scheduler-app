@@ -5,6 +5,7 @@ const { ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const { validateQuery, validateBody } = require('../middleware/validate');
+const writeRateLimiter = require('../middleware/writeRateLimiter');
 
 const rangeSchema = z.object({
     start: z.string().datetime(),
@@ -55,7 +56,7 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Create new reservation
-router.post('/', authenticateToken, validateBody(reservationSchema), async (req, res) => {
+router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSchema), async (req, res) => {
     try {
         const db = getDb();
         // Normalize and enrich payload

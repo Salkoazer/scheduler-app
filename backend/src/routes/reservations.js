@@ -122,6 +122,7 @@ router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, r
                     room: 1,
                     event: 1,
                     type: 1,
+                    author: 1,
                     status: 1,
                     createdAt: 1
                 }

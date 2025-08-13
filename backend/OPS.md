@@ -48,3 +48,14 @@ Notes:
 - Prefer `mongodump`/`mongorestore` for full-fidelity backups (indexes, metadata). JSON exports won’t capture indexes; re-create as needed.
 - Keep backups encrypted at rest (S3 SSE-KMS or SSE-S3) and restrict access.
 - Test restores periodically.
+
+## Credential leak response
+
+If a database URI or password leaks (repo, logs, chat):
+1. Immediately rotate the user password in MongoDB Atlas (or create a new user and disable the old one).
+2. Update all places that reference the URI:
+  - Local dev: `backend/.env` (untracked by Git)
+  - CI: GitHub Secrets like `PROD_MONGO_URI`
+  - Hosting/Prod: your platform's secret manager
+3. In Git, ensure `.env` files are ignored (they are). If secrets were committed, rewrite history with BFG or git-filter-repo after rotation.
+4. Add or run secret scanning (Gitleaks workflow included) to prevent regressions.

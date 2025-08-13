@@ -4,6 +4,7 @@
 .pnp.js
 
 # environment files
+/.env
 */.env
 */.env.local
 */.env.development.local

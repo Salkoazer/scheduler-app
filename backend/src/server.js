@@ -71,6 +71,12 @@ const port = process.env.PORT || 3000;
 // Minor hardening: hide Express signature
 app.disable('x-powered-by');
 
+// Validate required secrets early
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim().length < 16) {
+  console.error('FATAL: JWT_SECRET is missing or too short. Set a strong JWT_SECRET in environment.');
+  process.exit(1);
+}
+
 // CORS: allow selected origins and log decisions
 const envAllowed = process.env.CORS_ALLOWED_ORIGINS;
 const allowedOrigins = envAllowed

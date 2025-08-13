@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install deps
+        run: npm ci
+      - name: Start MongoDB
+        uses: supercharge/mongodb-github-action@1.10.0
+        with:
+          mongodb-version: '6.0'
+      - name: Start server
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          JWT_SECRET: testsecret_please_change_me_12345
+          MONGO_URI: mongodb://localhost:27017/scheduler-ci
+          CORS_ALLOWED_ORIGINS: http://localhost:9000
+        run: |
+          nohup node src/server.js > server.log 2>&1 &
+          sleep 3
+          tail -n +1 server.log || true
+      - name: Smoke test
+        env:
+          PORT: 3000
+          ORIGIN: http://localhost:9000
+        run: bash ./scripts/smoke.sh
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scheduler-app-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install deps
+        run: npm ci
+      - name: Typecheck and build
+        run: |
+          npx tsc --noEmit
+          npm run build --if-present
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Audit backend
+        working-directory: backend
+        continue-on-error: true
+        run: npm audit --audit-level=moderate || true
+      - name: Audit frontend
+        working-directory: scheduler-app-frontend
+        continue-on-error: true
+        run: npm audit --audit-level=moderate || true

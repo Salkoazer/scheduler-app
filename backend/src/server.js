@@ -3,9 +3,9 @@ const dotenv = require('dotenv');
 
 // Debug: Show initial process.env values
 console.log('Initial process.env:', {
-    MONGODB_URI: process.env.MONGODB_URI ? 'Set from system' : 'Not set',
-    PORT: process.env.PORT ? 'Set from system' : 'Not set',
-    NODE_ENV: process.env.NODE_ENV ? 'Set from system' : 'Not set'
+  MONGO_URI: process.env.MONGO_URI ? 'Set from system' : 'Not set',
+  PORT: process.env.PORT ? 'Set from system' : 'Not set',
+  NODE_ENV: process.env.NODE_ENV ? 'Set from system' : 'Not set'
 });
 
 // Load environment variables from .env file
@@ -21,9 +21,9 @@ console.log('.env file load result:', {
 
 // Debug: Show process.env after .env load
 console.log('After .env load:', {
-    MONGODB_URI: process.env.MONGODB_URI ? 'Set from .env' : 'Not set',
-    PORT: process.env.PORT ? 'Set from .env' : 'Not set',
-    NODE_ENV: process.env.NODE_ENV ? 'Set from .env' : 'Not set'
+  MONGO_URI: process.env.MONGO_URI ? 'Set from .env' : 'Not set',
+  PORT: process.env.PORT ? 'Set from .env' : 'Not set',
+  NODE_ENV: process.env.NODE_ENV ? 'Set from .env' : 'Not set'
 });
 
 const express = require('express');
@@ -35,6 +35,7 @@ const authRoutes = require('./routes/auth');
 const reservationRoutes = require('./routes/reservations');
 const rateLimiter = require('./middleware/rateLimiter');
 const secureHeaders = require('./middleware/secureHeaders');
+const authRateLimiter = require('./middleware/authRateLimiter');
 
 // Debug: Show production config values
 const productionConfig = require('../config/production');
@@ -44,13 +45,13 @@ console.log('Production config values:', {
 });
 
 // Debug MongoDB URI selection with more detailed logging
-const configuredUri = process.env.MONGODB_URI;
+const configuredUri = process.env.MONGO_URI;
 const mongoUri = configuredUri || productionConfig.mongoUri;
 
 console.log('Environment variables loaded:', {
-    MONGODB_URI: configuredUri ? 'Set' : 'Not set',
-    PORT: process.env.PORT || 'Not set',
-    NODE_ENV: process.env.NODE_ENV || 'Not set'
+  MONGO_URI: configuredUri ? 'Set' : 'Not set',
+  PORT: process.env.PORT || 'Not set',
+  NODE_ENV: process.env.NODE_ENV || 'Not set'
 });
 
 console.log('Selected MongoDB URI:', mongoUri.replace(/:[^:]*@/, ':****@'));
@@ -90,23 +91,30 @@ app.use((req, res, next) => {
   const o = req.headers.origin;
   const acrm = req.headers['access-control-request-method'];
   const acrh = req.headers['access-control-request-headers'];
-  console.log(`→ ${method} ${originalUrl}`, {
-    origin: o || null,
-    'access-control-request-method': acrm || null,
-    'access-control-request-headers': acrh || null
-  });
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`→ ${method} ${originalUrl}`, {
+      origin: o || null,
+      'access-control-request-method': acrm || null,
+      'access-control-request-headers': acrh || null
+    });
+  }
 
   res.on('finish', () => {
-    const hdrs = res.getHeaders();
-    const pick = (k) => (hdrs[k.toLowerCase()] ?? undefined);
-    console.log(`← ${res.statusCode} ${method} ${originalUrl}`, {
-      'access-control-allow-origin': pick('access-control-allow-origin'),
-      'access-control-allow-credentials': pick('access-control-allow-credentials'),
-      'access-control-allow-methods': pick('access-control-allow-methods'),
-      'access-control-allow-headers': pick('access-control-allow-headers'),
-      'vary': pick('vary'),
-      'set-cookie': pick('set-cookie')
-    });
+    if (process.env.NODE_ENV !== 'production') {
+      const hdrs = res.getHeaders();
+      const pick = (k) => (hdrs[k.toLowerCase()] ?? undefined);
+      console.log(`← ${res.statusCode} ${method} ${originalUrl}`, {
+        'access-control-allow-origin': pick('access-control-allow-origin'),
+        'access-control-allow-credentials': pick('access-control-allow-credentials'),
+        'access-control-allow-methods': pick('access-control-allow-methods'),
+        'access-control-allow-headers': pick('access-control-allow-headers'),
+        'vary': pick('vary'),
+        'set-cookie': pick('set-cookie')
+      });
+    } else {
+      console.log(`${res.statusCode} ${method} ${originalUrl}`);
+    }
   });
   next();
 });
@@ -121,11 +129,23 @@ app.use(cookieParser());
 // Apply secure headers middleware
 app.use(secureHeaders);
 
+// Enforce HTTPS in production (behind proxy/load balancer)
+app.set('trust proxy', 1);
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    if (isSecure) return next();
+    const host = req.headers.host;
+    return res.redirect(301, `https://${host}${req.originalUrl}`);
+  });
+}
+
 // Apply rate limiting middleware
 app.use(rateLimiter);
 
 // Mount routes with correct prefixes
-app.use('/api/auth', authRoutes);
+// Apply stricter rate limits for auth routes
+app.use('/api/auth', authRateLimiter, authRoutes);
 app.use('/api/reservations', reservationRoutes);
 
 // Debug route logging

@@ -12,7 +12,7 @@ const connectToDb = async (uri) => {
         isConnecting = true;
         
         if (!uri || uri.includes('localhost')) {
-            console.error('Invalid or local MongoDB URI detected. Please check your .env file.');
+            console.error('Invalid or local MongoDB URI detected. Please check your MONGO_URI environment variable.');
             throw new Error('Invalid MongoDB URI');
         }
 

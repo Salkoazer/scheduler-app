@@ -71,18 +71,27 @@ router.get('/', authenticateToken, async (req, res) => {
                     $gte: new Date(startDate).toISOString(),
                     $lte: new Date(endDate).toISOString()
                 }
+            }, {
+                projection: {
+                    _id: 1,
+                    date: 1,
+                    room: 1,
+                    event: 1,
+                    type: 1,
+                    status: 1,
+                    createdAt: 1
+                }
             })
             .sort({ createdAt: -1 })
             .toArray();
 
-        console.log(`Fetched ${reservations.length} reservations`);
-        reservations.forEach(reservation => {
-            console.log('Reservation date:', reservation.date);
-        });
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`Fetched ${reservations.length} reservations`);
+        }
         
         res.json(reservations);
     } catch (error) {
-        console.error('Error fetching reservations:', error);
+    console.error('Error fetching reservations:', error.message);
         res.status(500).json({ message: 'Internal server error' });
     }
 });

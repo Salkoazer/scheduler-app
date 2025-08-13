@@ -67,6 +67,8 @@ const app = express();
 app.use(requestId);
 app.use(pinoHttp({ logger }));
 const port = process.env.PORT || 3000;
+// Minor hardening: hide Express signature
+app.disable('x-powered-by');
 
 // CORS: allow selected origins and log decisions
 const envAllowed = process.env.CORS_ALLOWED_ORIGINS;

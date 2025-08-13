@@ -1,0 +1,65 @@
+name: Daily Mongo Backup
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      MONGO_URI: ${{ secrets.PROD_MONGO_URI }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      S3_BUCKET: ${{ secrets.S3_BACKUP_BUCKET }}
+      S3_PREFIX: ${{ secrets.S3_BACKUP_PREFIX }}
+      S3_KMS_KEY_ID: ${{ secrets.S3_KMS_KEY_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run backup script
+        run: |
+          chmod +x scripts/backup.sh
+          ./scripts/backup.sh
+
+      - name: Find latest backup file
+        id: find_backup
+        run: |
+          LATEST=$(ls -1t backups/* 2>/dev/null | head -n1)
+          if [ -z "$LATEST" ]; then echo "No backup produced" >&2; exit 1; fi
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          echo "name=$(basename "$LATEST")" >> $GITHUB_OUTPUT
+
+      - name: Upload GitHub artifact (7 days retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mongo-backup-${{ steps.find_backup.outputs.name }}
+          path: backend/${{ steps.find_backup.outputs.latest }}
+          retention-days: 7
+
+      - name: Configure AWS credentials
+        if: env.S3_BUCKET != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload to S3 (AES256 or KMS)
+        if: env.S3_BUCKET != ''
+        run: |
+          FILE="${{ steps.find_backup.outputs.latest }}"
+          NAME="${{ steps.find_backup.outputs.name }}"
+          PREFIX=${S3_PREFIX:-backups}
+          DEST="s3://${S3_BUCKET}/${PREFIX}/${NAME}"
+          if [ -n "$S3_KMS_KEY_ID" ]; then
+            aws s3 cp "$FILE" "$DEST" --sse aws:kms --sse-kms-key-id "$S3_KMS_KEY_ID"
+          else
+            aws s3 cp "$FILE" "$DEST" --sse AES256
+          fi
+          echo "Uploaded to $DEST"

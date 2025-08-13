@@ -11,6 +11,11 @@ const rangeSchema = z.object({
     end: z.string().datetime()
 });
 
+const listQuerySchema = rangeSchema.extend({
+    limit: z.coerce.number().int().positive().max(200).optional().default(200),
+    page: z.coerce.number().int().min(1).optional().default(1)
+});
+
 // Validate reservation payloads
 const reservationSchema = z.object({
     room: z.string().min(1),
@@ -84,9 +89,9 @@ router.post('/', authenticateToken, validateBody(reservationSchema), async (req,
 });
 
 // Get all reservations within a date range
-router.get('/', authenticateToken, validateQuery(rangeSchema), async (req, res) => {
+router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, res) => {
     try {
-        const { start, end } = req.query;
+    const { start, end, limit = 200, page = 1 } = req.query;
         if (!start || !end) {
             return res.status(400).json({ message: 'Start and end dates are required' });
         }
@@ -103,7 +108,7 @@ router.get('/', authenticateToken, validateQuery(rangeSchema), async (req, res) 
         }
 
         const db = getDb();
-    const reservations = await db.collection('reservations')
+        const reservations = await db.collection('reservations')
             .find({
                 date: {
                     $gte: new Date(startDate).toISOString(),
@@ -121,6 +126,8 @@ router.get('/', authenticateToken, validateQuery(rangeSchema), async (req, res) 
                 }
             })
             .sort({ createdAt: -1 })
+            .limit(Number(limit))
+            .skip((Number(page) - 1) * Number(limit))
             .toArray();
 
         if (process.env.NODE_ENV !== 'production') {

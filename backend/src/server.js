@@ -177,6 +177,15 @@ app.get('/api/healthcheck', (req, res) => {
 // CSRF token rotation endpoint
 app.get('/api/csrf', csrfTokenRoute);
 
+// Centralized error handler
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('Unhandled error:', err);
+  }
+  res.status(status).json({ message: status === 500 ? 'Internal server error' : (err.message || 'Error') });
+});
+
 connectToDb(mongoUri)
   .then(async () => {
     console.log('Connected to database, initializing...');

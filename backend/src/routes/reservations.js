@@ -3,6 +3,13 @@ const router = express.Router();
 const { getDb } = require('../db/connection');
 const { ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
+const { z } = require('zod');
+const { validateQuery } = require('../middleware/validate');
+
+const rangeSchema = z.object({
+    start: z.string().datetime(),
+    end: z.string().datetime()
+});
 
 // Middleware to authenticate JWT token (from Authorization header or cookie)
 const authenticateToken = (req, res, next) => {
@@ -52,7 +59,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // Get all reservations within a date range
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, validateQuery(rangeSchema), async (req, res) => {
     try {
         const { start, end } = req.query;
         if (!start || !end) {

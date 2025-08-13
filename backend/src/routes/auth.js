@@ -3,22 +3,30 @@ const router = express.Router();
 const { getDb } = require('../db/connection');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { z } = require('zod');
+const { validateBody } = require('../middleware/validate');
 
-router.post('/', async (req, res) => {
+const authSchema = z.object({
+    username: z.string().min(1),
+    password: z.string().min(1)
+});
+
+router.post('/', validateBody(authSchema), async (req, res) => {
     const { username, password } = req.body;
-    console.log(`Authenticating user: ${username}`);
+    const logger = require('../logger');
+    logger.info({ username }, 'Authenticating user');
     const db = getDb();
     const user = await db.collection('credentials').findOne({ username });
 
     if (!user) {
-        console.log('User not found');
+    logger.warn('Invalid credentials attempt');
         return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    console.log(`User found: ${user.username}`);
+    logger.debug({ username: user.username }, 'User found');
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    console.log(`Password match: ${isPasswordValid}`);
+    logger.debug({ match: isPasswordValid }, 'Password match result');
 
     if (isPasswordValid) {
         const token = jwt.sign({ username }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -30,12 +38,12 @@ router.post('/', async (req, res) => {
             sameSite: isProd ? 'none' : 'lax',
             maxAge: 3600000 // 1 hour
         };
-        console.log('Authentication successful, setting cookie with options:', cookieOptions);
+    logger.info({ cookieOptions }, 'Authentication successful, setting cookie');
         res.cookie('token', token, cookieOptions);
         // Also return token in body for clients that use Authorization header
         res.status(200).json({ message: 'Authentication successful', token });
     } else {
-        console.log('Invalid credentials');
+    logger.warn('Invalid credentials');
         res.status(401).json({ error: 'Invalid credentials' });
     }
 });
@@ -48,10 +56,10 @@ router.post('/logout', (req, res) => {
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict'
         });
-        console.log('User logged out, cookie cleared');
+    logger.info('User logged out, cookie cleared');
         res.status(200).json({ message: 'Logged out' });
     } catch (e) {
-        console.error('Error during logout', e);
+    logger.error({ err: e.message }, 'Error during logout');
         res.status(500).json({ message: 'Logout failed' });
     }
 });

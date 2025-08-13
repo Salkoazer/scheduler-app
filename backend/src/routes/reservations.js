@@ -33,7 +33,12 @@ const reservationSchema = z.object({
     isActive: z.boolean().optional().default(true),
     date: z.string().datetime(),
     type: z.enum(['event', 'assembly', 'disassembly', 'others']),
-    notes: z.string().max(1000).optional()
+        notes: z.string().max(1000).optional(),
+        reservationStatus: z.enum(['pre', 'confirmed', 'flagged']).optional().default('pre')
+});
+
+const statusUpdateSchema = z.object({
+    reservationStatus: z.enum(['pre', 'confirmed', 'flagged'])
 });
 
 // Middleware to authenticate JWT token (from Authorization header or cookie)
@@ -70,7 +75,9 @@ router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSc
             author: req.user && req.user.username ? req.user.username : 'unknown',
             isActive: true,
             createdAt: new Date(),
-            status: 'active'
+            status: 'active',
+            // Always start as pre-reservation regardless of client input
+            reservationStatus: 'pre'
         };
 
         console.log('Creating reservation with date:', reservation.date);
@@ -124,6 +131,7 @@ router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, r
                     room: 1,
                     event: 1,
                     type: 1,
+                    reservationStatus: 1,
                     author: 1,
                     status: 1,
                     createdAt: 1
@@ -142,6 +150,28 @@ router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, r
     } catch (error) {
     console.error('Error fetching reservations:', error.message);
         res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Update reservation status (pre | confirmed | flagged)
+router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) => {
+    try {
+        const parse = statusUpdateSchema.safeParse(req.body);
+        if (!parse.success) {
+            return res.status(400).json({ message: 'Invalid status', details: parse.error.errors });
+        }
+        const db = getDb();
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid id' });
+        const result = await db.collection('reservations').updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { reservationStatus: parse.data.reservationStatus, updatedAt: new Date() } }
+        );
+        if (result.matchedCount === 0) return res.status(404).json({ message: 'Not found' });
+        return res.json({ ok: true });
+    } catch (e) {
+        console.error('Error updating reservation status:', e);
+        return res.status(500).json({ message: 'Internal server error' });
     }
 });
 

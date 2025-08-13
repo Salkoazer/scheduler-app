@@ -4,11 +4,29 @@ const { getDb } = require('../db/connection');
 const { ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const { z } = require('zod');
-const { validateQuery } = require('../middleware/validate');
+const { validateQuery, validateBody } = require('../middleware/validate');
 
 const rangeSchema = z.object({
     start: z.string().datetime(),
     end: z.string().datetime()
+});
+
+// Validate reservation payloads
+const reservationSchema = z.object({
+    room: z.string().min(1),
+    reservationNumber: z.string().min(1),
+    nif: z.string().regex(/^\d{9}$/, 'NIF must be 9 digits'),
+    producerName: z.string().min(1),
+    email: z.string().email(),
+    contact: z.string().min(1),
+    responsablePerson: z.string().min(1),
+    event: z.string().min(1),
+    eventClassification: z.string().min(1),
+    author: z.string().min(1),
+    isActive: z.boolean().optional().default(true),
+    date: z.string().datetime(),
+    type: z.enum(['event', 'assembly', 'disassembly', 'others']),
+    notes: z.string().max(1000).optional()
 });
 
 // Middleware to authenticate JWT token (from Authorization header or cookie)
@@ -31,11 +49,14 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Create new reservation
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, validateBody(reservationSchema), async (req, res) => {
     try {
         const db = getDb();
+        // Normalize and enrich payload
         const reservation = {
             ...req.body,
+            // Ensure date is stored as ISO string for consistent range queries
+            date: new Date(req.body.date).toISOString(),
             createdAt: new Date(),
             status: 'active'
         };
@@ -71,8 +92,14 @@ router.get('/', authenticateToken, validateQuery(rangeSchema), async (req, res) 
         const startDate = new Date(start);
         const endDate = new Date(end);
 
+        // Guard: prevent unbounded/huge range scans (max 366 days)
+        const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+        if (endDate - startDate > MAX_RANGE_MS) {
+            return res.status(400).json({ message: 'Date range too large. Please reduce the range.' });
+        }
+
         const db = getDb();
-        const reservations = await db.collection('reservations')
+    const reservations = await db.collection('reservations')
             .find({
                 date: {
                     $gte: new Date(startDate).toISOString(),

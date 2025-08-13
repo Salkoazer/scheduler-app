@@ -21,6 +21,18 @@ async function initializeDatabase() {
             await db.createCollection('credentials');
         }
 
+        // Ensure indexes for reservations collection
+        try {
+            await db.collection('reservations').createIndexes([
+                { key: { date: 1 }, name: 'idx_reservations_date' },
+                { key: { room: 1, date: 1 }, name: 'idx_reservations_room_date' },
+                { key: { createdAt: -1 }, name: 'idx_reservations_createdAt' }
+            ]);
+            console.log('Ensured reservation indexes');
+        } catch (e) {
+            console.warn('Failed creating indexes for reservations:', e.message);
+        }
+
         // Check if admin user exists
         const adminUser = await db.collection('credentials').findOne({ username: 'admin' });
         

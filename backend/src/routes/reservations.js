@@ -241,4 +241,19 @@ router.get('/history', authenticateToken, async (req, res) => {
     }
 });
 
+// Get single reservation by id (full document)
+router.get('/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid id' });
+        const db = getDb();
+        const doc = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
+        if (!doc) return res.status(404).json({ message: 'Not found' });
+        return res.json(doc);
+    } catch (e) {
+        console.error('Error fetching reservation by id:', e);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 module.exports = router;

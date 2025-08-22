@@ -49,11 +49,16 @@ async function initializeDatabase() {
                 await db.collection('credentials').insertOne({
                     username: 'admin',
                     password: hashedPassword,
+                    role: 'admin',
                     createdAt: new Date()
                 });
                 console.log('Admin user created successfully');
             } else {
                 console.log('Admin user already exists');
+                // Backfill role if missing
+                if (!adminUser.role) {
+                    await db.collection('credentials').updateOne({ _id: adminUser._id }, { $set: { role: 'admin' } });
+                }
             }
         }
         

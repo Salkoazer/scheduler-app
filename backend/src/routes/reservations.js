@@ -127,13 +127,21 @@ router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, r
         }
 
         const db = getDb();
+        const baseQuery = {
+            date: {
+                $gte: new Date(startDate).toISOString(),
+                $lte: new Date(endDate).toISOString()
+            }
+        };
+        // Role-based visibility: staff sees all non-pre + their own pre-reservations
+        if (req.user && req.user.role !== 'admin') {
+            baseQuery.$or = [
+                { reservationStatus: { $in: ['confirmed', 'flagged'] } },
+                { $and: [ { reservationStatus: { $in: [null, 'pre'] } }, { author: req.user.username } ] }
+            ];
+        }
         const reservations = await db.collection('reservations')
-            .find({
-                date: {
-                    $gte: new Date(startDate).toISOString(),
-                    $lte: new Date(endDate).toISOString()
-                }
-            }, {
+            .find(baseQuery, {
                 projection: {
                     _id: 1,
                     date: 1,

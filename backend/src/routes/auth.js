@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/connection');
 const bcrypt = require('bcrypt');
-const { signToken, verifyToken } = require('../utils/jwt');
+const { signAccessToken, signRefreshToken, verifyAccessToken, verifyRefreshToken } = require('../utils/jwt');
 const { z } = require('zod');
 const { validateBody } = require('../middleware/validate');
 
@@ -10,6 +10,10 @@ const authSchema = z.object({
     username: z.string().min(1),
     password: z.string().min(1)
 });
+
+// In-memory refresh token allowlist (replace with persistent store/redis in production for multi-instance)
+const refreshStore = new Map(); // key: jti, value: { username, role, exp }
+const { randomUUID } = require('crypto');
 
 router.post('/', validateBody(authSchema), async (req, res) => {
     const { username, password } = req.body;
@@ -29,19 +33,26 @@ router.post('/', validateBody(authSchema), async (req, res) => {
     logger.debug({ match: isPasswordValid }, 'Password match result');
 
     if (isPasswordValid) {
-    const token = signToken({ username, role: user.role || 'staff' });
+    const role = user.role || 'staff';
+    const accessToken = signAccessToken({ username, role });
+    const jti = randomUUID();
+    const refreshToken = signRefreshToken({ username, role }, jti);
+    try {
+        const decoded = verifyRefreshToken(refreshToken);
+        refreshStore.set(jti, { username, role, exp: decoded.exp });
+    } catch (_) {}
         const isProd = process.env.NODE_ENV === 'production';
         // In production, allow cross-site cookie (requires HTTPS)
         const cookieOptions = {
             httpOnly: true,
             secure: isProd,
             sameSite: isProd ? 'none' : 'lax',
-            maxAge: 3600000 // 1 hour
+            maxAge: 1000 * 60 * 60 * 8 // 8h max cookie (refresh inside)
         };
-    logger.info({ cookieOptions }, 'Authentication successful, setting cookie');
-        res.cookie('token', token, cookieOptions);
-    // Cookie set; include role for client convenience
-    res.status(200).json({ message: 'Authentication successful', role: user.role || 'staff', username: user.username });
+    logger.info({ cookieOptions }, 'Authentication successful, setting cookies');
+        res.cookie('token', accessToken, cookieOptions);
+        res.cookie('refresh', refreshToken, { ...cookieOptions, httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 7 });
+    res.status(200).json({ message: 'Authentication successful', role, username: user.username, expiresIn: process.env.JWT_ACCESS_TTL || '15m' });
     } else {
     logger.warn('Invalid credentials');
         res.status(401).json({ error: 'Invalid credentials' });
@@ -51,7 +62,19 @@ router.post('/', validateBody(authSchema), async (req, res) => {
 // Clear auth cookie (logout)
 router.post('/logout', (req, res) => {
     try {
+        const refreshToken = req.cookies && req.cookies.refresh;
+        if (refreshToken) {
+            try {
+                const dec = verifyRefreshToken(refreshToken);
+                if (dec && dec.jti) refreshStore.delete(dec.jti);
+            } catch(_){}
+        }
         res.clearCookie('token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+        res.clearCookie('refresh', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict'
@@ -71,7 +94,7 @@ router.get('/me', (req, res) => {
     try {
         const token = (req.cookies && req.cookies.token) || null;
         if (!token) return res.status(401).json({ message: 'Not authenticated' });
-    const user = verifyToken(token);
+    const user = verifyAccessToken(token);
         res.status(200).json({ username: user.username, role: user.role || 'staff' });
     } catch (e) {
         res.status(401).json({ message: 'Not authenticated' });
@@ -83,9 +106,41 @@ router.get('/me', (req, res) => {
         try {
             const token = (req.cookies && req.cookies.token) || null;
             if (!token) return res.status(401).json({ message: 'Not authenticated' });
-            const user = verifyToken(token);
+            const user = verifyAccessToken(token);
             req.user = user;
             next();
+// Refresh endpoint (rotating refresh tokens)
+router.post('/refresh', async (req, res) => {
+    try {
+        const oldRefresh = (req.cookies && req.cookies.refresh) || null;
+        if (!oldRefresh) return res.status(401).json({ message: 'Missing refresh token' });
+        const decoded = verifyRefreshToken(oldRefresh);
+        if (!decoded || !decoded.jti) return res.status(401).json({ message: 'Invalid refresh token' });
+        const entry = refreshStore.get(decoded.jti);
+        if (!entry || entry.username !== decoded.sub) {
+            return res.status(401).json({ message: 'Refresh token revoked' });
+        }
+        // Rotate: delete old, issue new
+        refreshStore.delete(decoded.jti);
+        const role = decoded.role || 'staff';
+        const username = decoded.sub;
+        const { randomUUID } = require('crypto');
+        const newJti = randomUUID();
+        const newRefresh = signRefreshToken({ username, role }, newJti);
+        const access = signAccessToken({ username, role });
+        try {
+            const d2 = verifyRefreshToken(newRefresh);
+            refreshStore.set(newJti, { username, role, exp: d2.exp });
+        } catch(_){}
+        const isProd = process.env.NODE_ENV === 'production';
+        const baseOpts = { httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' };
+        res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });
+        res.cookie('refresh', newRefresh, { ...baseOpts, maxAge: 1000 * 60 * 60 * 24 * 7 });
+        return res.json({ ok: true, expiresIn: process.env.JWT_ACCESS_TTL || '15m' });
+    } catch (e) {
+        return res.status(401).json({ message: 'Not authenticated' });
+    }
+});
         } catch (e) {
             return res.status(401).json({ message: 'Not authenticated' });
         }

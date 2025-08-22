@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/connection');
 const { ObjectId } = require('mongodb');
-const { verifyToken } = require('../utils/jwt');
+const { verifyAccessToken } = require('../utils/jwt');
 const { z } = require('zod');
 const { validateQuery, validateBody } = require('../middleware/validate');
 const writeRateLimiter = require('../middleware/writeRateLimiter');
@@ -69,7 +69,7 @@ const authenticateToken = (req, res, next) => {
     }
 
     try {
-        const user = verifyToken(token);
+        const user = verifyAccessToken(token);
         req.user = user;
         next();
     } catch (err) {

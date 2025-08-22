@@ -84,6 +84,24 @@ async function initializeDatabase() {
             console.warn('Failed to ensure unique index on credentials.username:', e.message);
         }
 
+        // Ensure day_clear_events collection + indexes
+        try {
+            const hasDayClear = collections.some(c => c.name === 'day_clear_events');
+            if (!hasDayClear) {
+                console.log('Creating day_clear_events collection...');
+                await db.createCollection('day_clear_events');
+            }
+            await db.collection('day_clear_events').createIndexes([
+                { key: { authorLc: 1, consumed: 1, createdAt: -1 }, name: 'idx_dce_author_consumed_createdAt' },
+                { key: { room: 1, dayKey: 1, authorLc: 1, createdAt: -1 }, name: 'idx_dce_room_day_author_createdAt' },
+                // Optional TTL for consumed events older than 90 days (only applies if consumed:true)
+                { key: { expiresAt: 1 }, name: 'ttl_dce_expiresAt', expireAfterSeconds: 0, partialFilterExpression: { consumed: true } }
+            ]);
+            console.log('Ensured day_clear_events indexes');
+        } catch (e) {
+            console.warn('Failed ensuring day_clear_events indexes:', e.message);
+        }
+
         // Seed admin only in non-production environments
         if (process.env.NODE_ENV !== 'production') {
             const adminUser = await db.collection('credentials').findOne({ username: 'admin' });

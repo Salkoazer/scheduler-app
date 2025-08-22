@@ -330,10 +330,52 @@ router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) 
             return res.status(404).json({ message: 'Not found' });
         }
 
-        // If demoting out of confirmed/flagged, release flags
+        // Helper: generate day clear events for days now unblocked
+        const maybeGenerateDayClearEvents = async (room, days, actingUserLc, cause) => {
+            for (const dayKey of days) {
+                // If any other confirmed/flagged remains for (room, dayKey) skip
+                const stillOccupied = await db.collection('reservations').countDocuments({
+                    room,
+                    dates: { $elemMatch: { $gte: dayKey + 'T00:00:00.000Z', $lte: dayKey + 'T23:59:59.999Z' } },
+                    reservationStatus: { $in: ['confirmed','flagged'] },
+                    deleted: { $ne: true }
+                });
+                if (stillOccupied > 0) continue;
+                // Find distinct authors with pre reservations that include this day
+                const preAuthors = await db.collection('reservations').distinct('authorLc', {
+                    room,
+                    dates: { $elemMatch: { $gte: dayKey + 'T00:00:00.000Z', $lte: dayKey + 'T23:59:59.999Z' } },
+                    deleted: { $ne: true },
+                    $or: [ { reservationStatus: 'pre' }, { reservationStatus: { $exists: false } } ]
+                });
+                for (const authorLc of preAuthors) {
+                    if (!authorLc || authorLc === actingUserLc) continue; // skip acting user
+                    // Prevent duplicate unconsumed event for same (room, dayKey, author)
+                    const existingEvent = await db.collection('day_clear_events').findOne({ room, dayKey, authorLc, consumed: false });
+                    if (existingEvent) continue;
+                    await db.collection('day_clear_events').insertOne({
+                        room,
+                        dayKey,
+                        authorLc,
+                        createdAt: new Date(),
+                        consumed: false,
+                        cause,
+                        // Set an expiry marker 120 days out for TTL cleanup after consumption
+                        expiresAt: new Date(Date.now() + 120*24*60*60*1000)
+                    });
+                }
+            }
+        };
+
+        // If demoting out of confirmed/flagged, release flags and generate events
         if (!['confirmed','flagged'].includes(newStatus) && ['confirmed','flagged'].includes(fromStatus)) {
             const days = (existing.dates && existing.dates.length>0 ? existing.dates : [existing.date]).map(d => d.slice(0,10));
             await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: days }, reservationId: existing._id });
+            try {
+                await maybeGenerateDayClearEvents(existing.room, days, (req.user.username||'').toLowerCase(), { type: 'demotion', reservationId: existing._id, fromStatus, toStatus: newStatus });
+            } catch (genErr) {
+                console.warn('Failed generating day_clear_events (demotion):', genErr.message);
+            }
         }
 
         const action = newStatus === 'flagged' || fromStatus === 'flagged' ? 'flagged-status-change' : 'status-change';
@@ -617,6 +659,8 @@ router.delete('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
             toStatus: 'deleted',
             timestamp: new Date()
         });
+    // If deleting a confirmed/flagged (shouldn't happen via this endpoint since guard earlier) left for completeness
+    // If this deletion could free a day (not current path), analogous generation would occur.
         return res.json({ ok: true });
     } catch (e) {
         console.error('Error deleting reservation', e);

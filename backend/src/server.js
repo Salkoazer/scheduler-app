@@ -36,6 +36,7 @@ const { connectToDb } = require('./db/connection.js');
 const { initializeDatabase } = require('./db/init');
 const authRoutes = require('./routes/auth');
 const reservationRoutes = require('./routes/reservations');
+const dayClearEventRoutes = require('./routes/dayClearEvents');
 const rateLimiter = require('./middleware/rateLimiter');
 const secureHeaders = require('./middleware/secureHeaders');
 const authRateLimiter = require('./middleware/authRateLimiter');
@@ -167,6 +168,7 @@ app.use(verifyCsrf);
 // Apply stricter rate limits for auth routes
 app.use('/api/auth', authRateLimiter, authRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/day-clear-events', dayClearEventRoutes);
 
 // Debug route logging
 app._router.stack.forEach(function(r){

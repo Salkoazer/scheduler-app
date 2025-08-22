@@ -26,7 +26,9 @@ async function initializeDatabase() {
             await db.collection('reservations').createIndexes([
                 { key: { dates: 1, room: 1 }, name: 'idx_reservations_dates_room' },
                 { key: { room: 1, reservationStatus: 1, dates: 1 }, name: 'idx_reservations_room_status_dates' },
-                { key: { createdAt: -1 }, name: 'idx_reservations_createdAt' }
+                { key: { createdAt: -1 }, name: 'idx_reservations_createdAt' },
+                // TTL for soft-deleted documents (expire after 30 days)
+                { key: { deletedAt: 1 }, name: 'ttl_reservations_deletedAt', expireAfterSeconds: 60 * 60 * 24 * 30, partialFilterExpression: { deleted: true } }
             ]);
             console.log('Ensured reservation indexes (dates model)');
         } catch (e) {

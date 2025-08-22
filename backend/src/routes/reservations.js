@@ -208,7 +208,7 @@ router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, r
             finalQuery = { $and: [ dateOverlap, visibility ] };
         }
         const reservations = await db.collection('reservations')
-            .find(finalQuery, {
+            .find({ $and: [ finalQuery, { $or: [ { deleted: { $exists: false } }, { deleted: false } ] } ] }, {
                 projection: {
                     _id: 1,
                     dates: 1,
@@ -258,7 +258,7 @@ router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) 
         if (!ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid id' });
 
         // Fetch latest reservation
-        const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
+    const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id), $or: [ { deleted: { $exists: false } }, { deleted: false } ] });
         if (!existing) return res.status(404).json({ message: 'Not found' });
 
         const newStatus = parse.data.reservationStatus;
@@ -337,7 +337,7 @@ router.put('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
         const parse = editableFieldsSchema.safeParse(req.body || {});
         if (!parse.success) return res.status(400).json({ message: 'Invalid payload', details: parse.error.errors });
         const db = getDb();
-        const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
+    const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id), $or: [ { deleted: { $exists: false } }, { deleted: false } ] });
         if (!existing) return res.status(404).json({ message: 'Not found' });
         const isAdmin = req.user.role === 'admin';
         const isOwner = existing.author && existing.author.toLowerCase() === (req.user.username || '').toLowerCase();
@@ -507,7 +507,7 @@ router.put('/:id/notes', authenticateToken, writeRateLimiter, async (req, res) =
         const { notes, adminNotes } = req.body || {};
         if (notes === undefined && adminNotes === undefined) return res.status(400).json({ message: 'Nothing to update' });
         const db = getDb();
-        const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
+    const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id), $or: [ { deleted: { $exists: false } }, { deleted: false } ] });
         if (!existing) return res.status(404).json({ message: 'Not found' });
     // Treat user as owner if author matches (case-insensitive) OR author missing on a pre-reservation (legacy records)
     const isOwner = (existing.author && (existing.author || '').toLowerCase() === (req.user.username || '').toLowerCase()) || (!existing.author && (existing.reservationStatus === 'pre'));
@@ -569,14 +569,14 @@ router.delete('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
         const { id } = req.params;
         if (!ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid id' });
         const db = getDb();
-        const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
+        const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id), $or: [ { deleted: { $exists: false } }, { deleted: false } ] });
         if (!existing) return res.status(404).json({ message: 'Not found' });
         const status = existing.reservationStatus || 'pre';
         if (status !== 'pre') return res.status(400).json({ message: 'Only pre-reservations can be deleted' });
         const isAdmin = req.user.role === 'admin';
         const isOwner = existing.author && existing.author.toLowerCase() === (req.user.username || '').toLowerCase();
         if (!isAdmin && !isOwner) return res.status(403).json({ message: 'Forbidden' });
-        await db.collection('reservations').deleteOne({ _id: existing._id });
+        await db.collection('reservations').updateOne({ _id: existing._id }, { $set: { deleted: true, deletedAt: new Date(), updatedAt: new Date() } });
         await db.collection('reservationHistory').insertOne({
             reservationId: existing._id,
             room: existing.room,
@@ -591,6 +591,38 @@ router.delete('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
         return res.json({ ok: true });
     } catch (e) {
         console.error('Error deleting reservation', e);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Restore a soft-deleted reservation within retention window (admin only)
+router.post('/:id/restore', authenticateToken, writeRateLimiter, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
+        const { id } = req.params;
+        if (!ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid id' });
+        const db = getDb();
+        const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id), deleted: true });
+        if (!existing) return res.status(404).json({ message: 'Not found or not deleted' });
+        // Ensure within 30-day retention
+        if (!existing.deletedAt || (Date.now() - new Date(existing.deletedAt).getTime()) > 30*24*60*60*1000) {
+            return res.status(400).json({ message: 'Retention window expired' });
+        }
+        await db.collection('reservations').updateOne({ _id: existing._id }, { $set: { deleted: false }, $unset: { deletedAt: '' }, $currentDate: { updatedAt: true } });
+        await db.collection('reservationHistory').insertOne({
+            reservationId: existing._id,
+            room: existing.room,
+            date: existing.date,
+            user: req.user.username,
+            action: 'restore',
+            event: existing.event,
+            fromStatus: 'deleted',
+            toStatus: existing.reservationStatus || 'pre',
+            timestamp: new Date()
+        });
+        return res.json({ ok: true });
+    } catch (e) {
+        console.error('Error restoring reservation', e);
         return res.status(500).json({ message: 'Internal server error' });
     }
 });

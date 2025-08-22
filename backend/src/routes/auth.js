@@ -3,6 +3,7 @@ const router = express.Router();
 const { getDb } = require('../db/connection');
 const bcrypt = require('bcrypt');
 const { signAccessToken, signRefreshToken, verifyAccessToken, verifyRefreshToken } = require('../utils/jwt');
+const logger = require('../logger');
 const { z } = require('zod');
 const { validateBody } = require('../middleware/validate');
 
@@ -16,7 +17,6 @@ const { randomUUID } = require('crypto');
 
 router.post('/', validateBody(authSchema), async (req, res) => {
     const { username, password } = req.body;
-    const logger = require('../logger');
     logger.info({ username }, 'Authenticating user');
     const db = getDb();
     const user = await db.collection('credentials').findOne({ username });

@@ -257,42 +257,56 @@ router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) 
         const id = req.params.id;
         if (!ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid id' });
 
-        // Fetch existing reservation
+        // Fetch latest reservation
         const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
         if (!existing) return res.status(404).json({ message: 'Not found' });
 
         const newStatus = parse.data.reservationStatus;
+        const fromStatus = existing.reservationStatus || 'pre';
 
-        // Enforce at most one confirmed/flagged per (date, room)
-        if (['confirmed', 'flagged'].includes(newStatus)) {
-            // build set of days for existing reservation
-            const existingDays = (existing.dates && existing.dates.length > 0 ? existing.dates : [existing.date]);
-            const minDay = existingDays[0];
-            const maxDay = existing.endDate || existingDays[existingDays.length-1];
-            const candidates = await db.collection('reservations').find({
-                _id: { $ne: existing._id },
-                room: existing.room,
-                reservationStatus: { $in: ['confirmed','flagged'] },
-                date: { $lte: maxDay },
-                $expr: { $gte: [ { $ifNull: [ '$endDate', '$date' ] }, minDay ] }
-            }).toArray();
-            const existingSet = new Set(existingDays.map(d => d.slice(0,10)));
-            const overlap = candidates.find(c => {
-                const cDays = (c.dates && c.dates.length>0 ? c.dates : [c.date]);
-                return cDays.some(d => existingSet.has(d.slice(0,10)));
-            });
-            if (overlap) {
-                return res.status(409).json({ message: 'Another reservation already confirmed for one of these days & room' });
+        // Concurrency guard for promoting to confirmed/flagged
+        let claimedDays = [];
+        if (['confirmed','flagged'].includes(newStatus)) {
+            const days = (existing.dates && existing.dates.length>0 ? existing.dates : [existing.date]).map(d => d.slice(0,10));
+            try {
+                for (const day of days) {
+                    await db.collection('confirmed_flags').insertOne({ room: existing.room, day, reservationId: existing._id, createdAt: new Date() });
+                    claimedDays.push(day);
+                }
+            } catch (e) {
+                if (e.code === 11000) {
+                    // Conflict: release any claimed
+                    if (claimedDays.length) {
+                        await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: claimedDays }, reservationId: existing._id });
+                    }
+                    return res.status(409).json({ message: 'Conflict: another confirmed/flagged reservation already occupies at least one day for this room' });
+                }
+                // Unexpected error: rollback and rethrow
+                if (claimedDays.length) {
+                    await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: claimedDays }, reservationId: existing._id });
+                }
+                throw e;
             }
         }
 
-        const fromStatus = existing.reservationStatus || 'pre';
         const result = await db.collection('reservations').updateOne(
             { _id: new ObjectId(id) },
             { $set: { reservationStatus: newStatus, updatedAt: new Date() } }
         );
-        if (result.matchedCount === 0) return res.status(404).json({ message: 'Not found' });
-        // Log history event (use distinct action when entering or leaving flagged)
+        if (result.matchedCount === 0) {
+            // release claims if update lost race
+            if (claimedDays.length) {
+                await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: claimedDays }, reservationId: existing._id });
+            }
+            return res.status(404).json({ message: 'Not found' });
+        }
+
+        // If demoting out of confirmed/flagged, release flags
+        if (!['confirmed','flagged'].includes(newStatus) && ['confirmed','flagged'].includes(fromStatus)) {
+            const days = (existing.dates && existing.dates.length>0 ? existing.dates : [existing.date]).map(d => d.slice(0,10));
+            await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: days }, reservationId: existing._id });
+        }
+
         const action = newStatus === 'flagged' || fromStatus === 'flagged' ? 'flagged-status-change' : 'status-change';
         await db.collection('reservationHistory').insertOne({
             reservationId: existing._id,
@@ -385,6 +399,37 @@ router.put('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
                 return cDays.some(d => newSet.has(d.slice(0,10)));
             });
             if (overlap) return res.status(409).json({ message: 'Another confirmed/flagged reservation exists for at least one selected day & room' });
+            // Maintain confirmed_flags docs: claim new, release old (atomic-ish with rollback on conflict)
+            const oldDays = (existing.dates && existing.dates.length>0 ? existing.dates : []).map(d => d.slice(0,10));
+            const newDays = newDates.map(d => d.slice(0,10));
+            const oldRoom = existing.room;
+            const newRoom = update.room || existing.room;
+            const roomChanged = oldRoom !== newRoom;
+            const oldSet = new Set(oldDays);
+            const newSetDays = new Set(newDays);
+            const daysToAdd = roomChanged ? newDays : newDays.filter(d => !oldSet.has(d));
+            const daysToRemove = roomChanged ? oldDays : oldDays.filter(d => !newSetDays.has(d));
+            let claimed = [];
+            try {
+                for (const day of daysToAdd) {
+                    await db.collection('confirmed_flags').insertOne({ room: newRoom, day, reservationId: existing._id, createdAt: new Date() });
+                    claimed.push(day);
+                }
+            } catch (e) {
+                if (e.code === 11000) {
+                    if (claimed.length) {
+                        await db.collection('confirmed_flags').deleteMany({ room: newRoom, day: { $in: claimed }, reservationId: existing._id });
+                    }
+                    return res.status(409).json({ message: 'Conflict: another confirmed/flagged reservation already occupies at least one target day for this room' });
+                }
+                if (claimed.length) {
+                    await db.collection('confirmed_flags').deleteMany({ room: newRoom, day: { $in: claimed }, reservationId: existing._id });
+                }
+                throw e;
+            }
+            if (daysToRemove.length) {
+                await db.collection('confirmed_flags').deleteMany({ room: oldRoom, day: { $in: daysToRemove }, reservationId: existing._id });
+            }
             }
         if (changedFields.length === 0) return res.status(200).json({ ok: true, changed: [] });
     await db.collection('reservations').updateOne({ _id: existing._id }, { $set: { ...update, updatedAt: new Date() } });

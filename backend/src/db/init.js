@@ -44,6 +44,19 @@ async function initializeDatabase() {
             console.warn('Failed creating history indexes:', e.message);
         }
 
+        // Ensure confirmed_flags collection + unique index (one doc per (room, day))
+        try {
+            const hasConfirmedFlags = collections.some(c => c.name === 'confirmed_flags');
+            if (!hasConfirmedFlags) {
+                console.log('Creating confirmed_flags collection...');
+                await db.createCollection('confirmed_flags');
+            }
+            await db.collection('confirmed_flags').createIndex({ room: 1, day: 1 }, { unique: true, name: 'uniq_confirmed_flag_room_day' });
+            console.log('Ensured confirmed_flags unique index');
+        } catch (e) {
+            console.warn('Failed ensuring confirmed_flags index:', e.message);
+        }
+
         // Ensure unique index on credentials.username
         try {
             await db.collection('credentials').createIndex({ username: 1 }, { unique: true, name: 'uniq_credentials_username' });

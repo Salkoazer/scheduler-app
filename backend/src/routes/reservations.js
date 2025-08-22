@@ -214,11 +214,18 @@ router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, r
                     dates: 1,
                     room: 1,
                     event: 1,
+                    eventClassification: 1,
                     type: 1,
                     reservationStatus: 1,
                     author: 1,
                     status: 1,
                     createdAt: 1,
+                    updatedAt: 1,
+                    nif: 1,
+                    producerName: 1,
+                    email: 1,
+                    contact: 1,
+                    responsablePerson: 1,
                     notes: 1,
                     adminNotes: 1
                 }

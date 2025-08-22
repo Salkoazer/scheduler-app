@@ -84,4 +84,25 @@ router.post('/consume', authenticateToken, async (req, res) => {
     }
 });
 
+// Maintenance: cleanup very old events (admin only). This is an on-demand endpoint; can be hit by a cron.
+router.post('/maintenance/cleanup', authenticateToken, async (req, res) => {
+    try {
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Forbidden' });
+        }
+        const db = getDb();
+        const now = Date.now();
+        const veryOldThreshold = new Date(now - 180*24*60*60*1000); // 180 days
+        const autoConsumeThreshold = new Date(now - 120*24*60*60*1000); // 120 days -> convert to consumed so TTL can clear eventually
+        // Auto-consume (mark consumed) any lingering unconsumed events older than 120d
+        const autoConsumed = await db.collection('day_clear_events').updateMany({ consumed: false, createdAt: { $lte: autoConsumeThreshold } }, { $set: { consumed: true }, $currentDate: { consumedAt: true } });
+        // Hard delete any consumed events older than 180d (safety in case TTL misconfigured)
+        const hardDeleted = await db.collection('day_clear_events').deleteMany({ consumed: true, createdAt: { $lte: veryOldThreshold } });
+        res.json({ ok: true, autoConsumed: autoConsumed.modifiedCount, hardDeleted: hardDeleted.deletedCount });
+    } catch (e) {
+        console.error('Error cleaning up day clear events', e);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 module.exports = router;

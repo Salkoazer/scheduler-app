@@ -69,8 +69,9 @@ const authenticateToken = (req, res, next) => {
     }
 
     try {
-        const user = verifyAccessToken(token);
-        req.user = user;
+    const user = verifyAccessToken(token);
+    const username = user.username || user.sub; // normalize sub -> username
+    req.user = { ...user, username };
         next();
     } catch (err) {
         return res.status(403).json({ message: 'Invalid token' });
@@ -104,6 +105,7 @@ router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSc
             dates: normalizedDates.map(d => d.toISOString()),
             // Do not trust client for author/isActive
             author: req.user && req.user.username ? req.user.username : 'unknown',
+            authorLc: (req.user && req.user.username ? req.user.username : 'unknown').toLowerCase(),
             isActive: true,
             createdAt: new Date(),
             status: 'active',
@@ -198,11 +200,12 @@ router.get('/', authenticateToken, validateQuery(listQuerySchema), async (req, r
     const dateOverlap = { dates: { $elemMatch: { $gte: monthStartIso, $lte: monthEndIso } } };
         let finalQuery = dateOverlap;
         if (req.user && req.user.role !== 'admin') {
-            // Visibility subset for staff
+            // Visibility subset for staff (include their own pre-reservations)
+            const userLower = (req.user.username || '').toLowerCase();
             const visibility = {
                 $or: [
                     { reservationStatus: { $in: ['confirmed','flagged'] } },
-                    { $and: [ { reservationStatus: { $in: [null,'pre'] } }, { author: req.user.username } ] }
+                    { $and: [ { reservationStatus: { $in: [null,'pre'] } }, { authorLc: userLower } ] }
                 ]
             };
             finalQuery = { $and: [ dateOverlap, visibility ] };

@@ -5,8 +5,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-  "test:smoke": "bash ./scripts/smoke.sh",
-  "backup": "node scripts/backup.js"
+    "test:smoke": "bash ./scripts/smoke.sh",
+    "backup": "node scripts/backup.js",
+    "backfill:authorLc": "node scripts/backfillAuthorLc.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

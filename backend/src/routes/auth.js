@@ -111,7 +111,8 @@ router.get('/me', (req, res) => {
             const token = (req.cookies && req.cookies.token) || null;
             if (!token) return res.status(401).json({ message: 'Not authenticated' });
             const user = verifyAccessToken(token);
-            req.user = user;
+            const username = user.username || user.sub;
+            req.user = { ...user, username };
             next();
 // Refresh endpoint (rotating refresh tokens)
 router.post('/refresh', async (req, res) => {
@@ -213,7 +214,7 @@ router.post('/refresh', async (req, res) => {
             await db.collection('credentials').updateOne({ username }, { $set: update });
             // Propagate username change to reservations & history if renamed
             if (newUsername) {
-                await db.collection('reservations').updateMany({ author: username }, { $set: { author: newUsername } });
+                await db.collection('reservations').updateMany({ author: username }, { $set: { author: newUsername, authorLc: newUsername.toLowerCase() } });
                 await db.collection('reservationHistory').updateMany({ user: username }, { $set: { user: newUsername } });
             }
             res.json({ message: 'User updated' });

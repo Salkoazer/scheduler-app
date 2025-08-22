@@ -267,28 +267,54 @@ router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) 
         const newStatus = parse.data.reservationStatus;
         const fromStatus = existing.reservationStatus || 'pre';
 
-        // Concurrency guard for promoting to confirmed/flagged
+        // Concurrency guard for promoting to confirmed/flagged with self-healing of stale confirmed_flags
         let claimedDays = [];
         if (['confirmed','flagged'].includes(newStatus)) {
             const days = (existing.dates && existing.dates.length>0 ? existing.dates : [existing.date]).map(d => d.slice(0,10));
-            try {
-                for (const day of days) {
-                    await db.collection('confirmed_flags').insertOne({ room: existing.room, day, reservationId: existing._id, createdAt: new Date() });
-                    claimedDays.push(day);
-                }
-            } catch (e) {
-                if (e.code === 11000) {
-                    // Conflict: release any claimed
+            let attemptedHeal = false;
+            while (true) {
+                try {
+                    for (const day of days) {
+                        await db.collection('confirmed_flags').insertOne({ room: existing.room, day, reservationId: existing._id, createdAt: new Date() });
+                        claimedDays.push(day);
+                    }
+                    break; // success
+                } catch (e) {
+                    if (e.code === 11000) {
+                        // Possible stale flag. Attempt heal once.
+                        if (!attemptedHeal) {
+                            attemptedHeal = true;
+                            // Find stale flags for these days in this room whose reservationId is missing or not confirmed/flagged
+                            const staleFlags = await db.collection('confirmed_flags').aggregate([
+                                { $match: { room: existing.room, day: { $in: days } } },
+                                { $lookup: { from: 'reservations', localField: 'reservationId', foreignField: '_id', as: 'resv' } },
+                                { $unwind: { path: '$resv', preserveNullAndEmptyArrays: true } },
+                                { $match: { $or: [ { resv: { $exists: false } }, { 'resv.reservationStatus': { $nin: ['confirmed','flagged'] } }, { 'resv.deleted': true } ] } },
+                                { $project: { _id: 1 } }
+                            ]).toArray();
+                            if (staleFlags.length) {
+                                const ids = staleFlags.map(f => f._id);
+                                await db.collection('confirmed_flags').deleteMany({ _id: { $in: ids } });
+                                // rollback any partially claimed for our reservation before retrying
+                                if (claimedDays.length) {
+                                    await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: claimedDays }, reservationId: existing._id });
+                                    claimedDays = [];
+                                }
+                                continue; // retry claim
+                            }
+                        }
+                        // Conflict remains or already healed once -> abort
+                        if (claimedDays.length) {
+                            await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: claimedDays }, reservationId: existing._id });
+                        }
+                        return res.status(409).json({ message: 'Conflict: another confirmed/flagged reservation already occupies at least one day for this room' });
+                    }
+                    // Unexpected error
                     if (claimedDays.length) {
                         await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: claimedDays }, reservationId: existing._id });
                     }
-                    return res.status(409).json({ message: 'Conflict: another confirmed/flagged reservation already occupies at least one day for this room' });
+                    throw e;
                 }
-                // Unexpected error: rollback and rethrow
-                if (claimedDays.length) {
-                    await db.collection('confirmed_flags').deleteMany({ room: existing.room, day: { $in: claimedDays }, reservationId: existing._id });
-                }
-                throw e;
             }
         }
 

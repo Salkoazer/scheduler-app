@@ -21,16 +21,27 @@ async function initializeDatabase() {
             await db.createCollection('credentials');
         }
 
-        // Ensure indexes for reservations collection
+        // Ensure updated indexes for reservations collection (dates[] model)
         try {
             await db.collection('reservations').createIndexes([
-                { key: { date: 1 }, name: 'idx_reservations_date' },
-                { key: { room: 1, date: 1 }, name: 'idx_reservations_room_date' },
+                { key: { dates: 1, room: 1 }, name: 'idx_reservations_dates_room' },
+                { key: { room: 1, reservationStatus: 1, dates: 1 }, name: 'idx_reservations_room_status_dates' },
                 { key: { createdAt: -1 }, name: 'idx_reservations_createdAt' }
             ]);
-            console.log('Ensured reservation indexes');
+            console.log('Ensured reservation indexes (dates model)');
         } catch (e) {
-            console.warn('Failed creating indexes for reservations:', e.message);
+            console.warn('Failed creating reservations indexes:', e.message);
+        }
+
+        // Ensure indexes for reservationHistory
+        try {
+            await db.collection('reservationHistory').createIndexes([
+                { key: { reservationId: 1, timestamp: 1 }, name: 'idx_history_reservation_timestamp' },
+                { key: { date: 1, room: 1, timestamp: 1 }, name: 'idx_history_day_room_ts' }
+            ]);
+            console.log('Ensured history indexes');
+        } catch (e) {
+            console.warn('Failed creating history indexes:', e.message);
         }
 
         // Ensure unique index on credentials.username

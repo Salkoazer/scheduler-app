@@ -11,8 +11,7 @@ const authSchema = z.object({
     password: z.string().min(1)
 });
 
-// In-memory refresh token allowlist (replace with persistent store/redis in production for multi-instance)
-const refreshStore = new Map(); // key: jti, value: { username, role, exp }
+// Persistent refresh token storage now handled via Mongo collection 'refreshTokens'
 const { randomUUID } = require('crypto');
 
 router.post('/', validateBody(authSchema), async (req, res) => {
@@ -39,7 +38,9 @@ router.post('/', validateBody(authSchema), async (req, res) => {
     const refreshToken = signRefreshToken({ username, role }, jti);
     try {
         const decoded = verifyRefreshToken(refreshToken);
-        refreshStore.set(jti, { username, role, exp: decoded.exp });
+        // Persist refresh token allowlist entry
+        const expiresAt = new Date(decoded.exp * 1000);
+        await db.collection('refreshTokens').insertOne({ jti, username, role, createdAt: new Date(), expiresAt });
     } catch (_) {}
         const isProd = process.env.NODE_ENV === 'production';
         // In production, allow cross-site cookie (requires HTTPS)
@@ -60,13 +61,16 @@ router.post('/', validateBody(authSchema), async (req, res) => {
 });
 
 // Clear auth cookie (logout)
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
     try {
         const refreshToken = req.cookies && req.cookies.refresh;
         if (refreshToken) {
             try {
                 const dec = verifyRefreshToken(refreshToken);
-                if (dec && dec.jti) refreshStore.delete(dec.jti);
+                if (dec && dec.jti) {
+                    const db = getDb();
+                    await db.collection('refreshTokens').deleteOne({ jti: dec.jti });
+                }
             } catch(_){}
         }
         res.clearCookie('token', {
@@ -116,12 +120,13 @@ router.post('/refresh', async (req, res) => {
         if (!oldRefresh) return res.status(401).json({ message: 'Missing refresh token' });
         const decoded = verifyRefreshToken(oldRefresh);
         if (!decoded || !decoded.jti) return res.status(401).json({ message: 'Invalid refresh token' });
-        const entry = refreshStore.get(decoded.jti);
+        const db = getDb();
+        const entry = await db.collection('refreshTokens').findOne({ jti: decoded.jti });
         if (!entry || entry.username !== decoded.sub) {
             return res.status(401).json({ message: 'Refresh token revoked' });
         }
-        // Rotate: delete old, issue new
-        refreshStore.delete(decoded.jti);
+        // Rotate: delete old record, create new
+        await db.collection('refreshTokens').deleteOne({ jti: decoded.jti });
         const role = decoded.role || 'staff';
         const username = decoded.sub;
         const { randomUUID } = require('crypto');
@@ -130,8 +135,9 @@ router.post('/refresh', async (req, res) => {
         const access = signAccessToken({ username, role });
         try {
             const d2 = verifyRefreshToken(newRefresh);
-            refreshStore.set(newJti, { username, role, exp: d2.exp });
-        } catch(_){}
+            const expiresAt = new Date(d2.exp * 1000);
+            await db.collection('refreshTokens').insertOne({ jti: newJti, username, role, createdAt: new Date(), expiresAt });
+        } catch(_){ }
         const isProd = process.env.NODE_ENV === 'production';
         const baseOpts = { httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' };
         res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });

@@ -57,6 +57,23 @@ async function initializeDatabase() {
             console.warn('Failed ensuring confirmed_flags index:', e.message);
         }
 
+        // Ensure refreshTokens collection (persistent refresh token allowlist)
+        try {
+            const hasRefresh = collections.some(c => c.name === 'refreshTokens');
+            if (!hasRefresh) {
+                console.log('Creating refreshTokens collection...');
+                await db.createCollection('refreshTokens');
+            }
+            await db.collection('refreshTokens').createIndexes([
+                { key: { jti: 1 }, name: 'uniq_refresh_jti', unique: true },
+                { key: { expiresAt: 1 }, name: 'ttl_refresh_expiresAt', expireAfterSeconds: 0 },
+                { key: { username: 1 }, name: 'idx_refresh_username' }
+            ]);
+            console.log('Ensured refreshTokens indexes');
+        } catch (e) {
+            console.warn('Failed ensuring refreshTokens indexes:', e.message);
+        }
+
         // Ensure unique index on credentials.username
         try {
             await db.collection('credentials').createIndex({ username: 1 }, { unique: true, name: 'uniq_credentials_username' });

@@ -84,6 +84,16 @@ router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSc
         const result = await db.collection('reservations').insertOne(reservation);
         
         if (result.acknowledged) {
+            // Log history event
+            await db.collection('reservationHistory').insertOne({
+                reservationId: result.insertedId,
+                room: reservation.room,
+                date: reservation.date,
+                user: reservation.author,
+                action: 'create',
+                toStatus: 'pre',
+                timestamp: new Date()
+            });
             res.status(201).json({ 
                 message: 'Reservation created successfully',
                 id: result.insertedId 
@@ -162,15 +172,72 @@ router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) 
         const db = getDb();
         const id = req.params.id;
         if (!ObjectId.isValid(id)) return res.status(400).json({ message: 'Invalid id' });
+
+        // Fetch existing reservation
+        const existing = await db.collection('reservations').findOne({ _id: new ObjectId(id) });
+        if (!existing) return res.status(404).json({ message: 'Not found' });
+
+        const newStatus = parse.data.reservationStatus;
+
+        // Enforce at most one confirmed/flagged per (date, room)
+        if (['confirmed', 'flagged'].includes(newStatus)) {
+            const conflict = await db.collection('reservations').findOne({
+                _id: { $ne: new ObjectId(id) },
+                room: existing.room,
+                date: existing.date,
+                reservationStatus: { $in: ['confirmed', 'flagged'] }
+            });
+            if (conflict) {
+                return res.status(409).json({ message: 'Another reservation already confirmed for this room and day' });
+            }
+        }
+
+        const fromStatus = existing.reservationStatus || 'pre';
         const result = await db.collection('reservations').updateOne(
             { _id: new ObjectId(id) },
-            { $set: { reservationStatus: parse.data.reservationStatus, updatedAt: new Date() } }
+            { $set: { reservationStatus: newStatus, updatedAt: new Date() } }
         );
         if (result.matchedCount === 0) return res.status(404).json({ message: 'Not found' });
+        // Log history event
+        await db.collection('reservationHistory').insertOne({
+            reservationId: existing._id,
+            room: existing.room,
+            date: existing.date,
+            user: req.user && req.user.username ? req.user.username : 'unknown',
+            action: 'status-change',
+            fromStatus,
+            toStatus: newStatus,
+            timestamp: new Date()
+        });
         return res.json({ ok: true });
     } catch (e) {
         console.error('Error updating reservation status:', e);
         return res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// Get reservation history for a given date & room
+router.get('/history', authenticateToken, async (req, res) => {
+    try {
+        const { date, room } = req.query;
+        if (!date || !room) return res.status(400).json({ message: 'date and room are required' });
+        const day = new Date(date);
+        if (isNaN(day.getTime())) return res.status(400).json({ message: 'Invalid date' });
+        // Normalize date boundaries (match stored ISO date string exactly by day)
+        const dayStartIso = new Date(day.getFullYear(), day.getMonth(), day.getDate()).toISOString();
+        const dayEndIso = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999).toISOString();
+        const db = getDb();
+        const events = await db.collection('reservationHistory')
+            .find({
+                room: room,
+                date: { $gte: dayStartIso, $lte: dayEndIso }
+            })
+            .sort({ timestamp: 1 })
+            .toArray();
+        res.json(events);
+    } catch (e) {
+        console.error('Error fetching reservation history:', e);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 

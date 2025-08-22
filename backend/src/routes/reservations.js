@@ -17,21 +17,21 @@ const listQuerySchema = rangeSchema.extend({
     page: z.coerce.number().int().min(1).optional().default(1)
 });
 
-// Validate reservation payloads
-// New model: client only supplies dates[] (one or more discrete days). We still derive date/endDate internally for range efficiency.
+// Validate reservation payloads (relaxed). Only room, event and dates are required.
+// Formatting constraints intentionally removed to allow flexible input pre-data cleanup phase.
 const reservationSchema = z.object({
     room: z.string().min(1),
-    nif: z.string().regex(/^[0-9]{9}$/,'NIF must be 9 digits'),
-    producerName: z.string().min(1),
-    email: z.string().email(),
-    contact: z.string().min(1),
-    responsablePerson: z.string().min(1),
     event: z.string().min(1),
-    eventClassification: z.string().min(1),
-    author: z.string().min(1).optional(),
-    isActive: z.boolean().optional().default(true),
     dates: z.array(z.string().datetime()).min(1, 'dates must contain at least one day').max(60),
-    type: z.enum(['event', 'assembly', 'disassembly', 'others']),
+    nif: z.string().optional(),
+    producerName: z.string().optional(),
+    email: z.string().optional(),
+    contact: z.string().optional(),
+    responsablePerson: z.string().optional(),
+    eventClassification: z.string().optional(),
+    author: z.string().optional(),
+    isActive: z.boolean().optional().default(true),
+    type: z.enum(['event', 'assembly', 'disassembly', 'others']).optional(),
     notes: z.string().max(2000).optional(),
     adminNotes: z.string().max(4000).optional(),
     reservationStatus: z.enum(['pre', 'confirmed', 'flagged']).optional().default('pre')
@@ -41,17 +41,17 @@ const statusUpdateSchema = z.object({
     reservationStatus: z.enum(['pre','confirmed','flagged'])
 });
 
-// Editable fields schema (excludes reservationStatus and date; allows room change)
+// Editable fields schema (relaxed). Empty strings will be ignored server-side (treated as no-op) rather than stored.
 const editableFieldsSchema = z.object({
     room: z.enum(['room 1','room 2','room 3']).optional(),
     dates: z.array(z.string().datetime()).min(1).max(60).optional(),
-    nif: z.string().regex(/^[0-9]{9}$/,'NIF must be 9 digits').optional(),
-    producerName: z.string().min(1).optional(),
-    email: z.string().email().optional(),
-    contact: z.string().min(1).optional(),
-    responsablePerson: z.string().min(1).optional(),
-    event: z.string().min(1).optional(),
-    eventClassification: z.string().min(1).optional(),
+    nif: z.string().optional(),
+    producerName: z.string().optional(),
+    email: z.string().optional(),
+    contact: z.string().optional(),
+    responsablePerson: z.string().optional(),
+    event: z.string().optional(),
+    eventClassification: z.string().optional(),
     type: z.enum(['event','assembly','disassembly','others']).optional(),
     notes: z.string().max(2000).optional()
 }).refine(obj => Object.keys(obj).length > 0, { message: 'No editable fields provided' });
@@ -97,8 +97,13 @@ router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSc
         const firstIso = normalizedDates[0].toISOString();
         const lastIso = normalizedDates[normalizedDates.length-1].toISOString();
 
+        // Clean up optional fields: treat empty strings as absent
+        const rawBody = { ...req.body };
+        ['nif','producerName','email','contact','responsablePerson','eventClassification','type','notes','adminNotes'].forEach(k => {
+            if (rawBody[k] === '') delete rawBody[k];
+        });
         const reservation = {
-            ...req.body,
+            ...rawBody,
             // derive internal fields
             date: firstIso,
             endDate: lastIso,
@@ -418,6 +423,7 @@ router.put('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
         const fromSnapshots = {};
         const toSnapshots = {};
         for (const [k,v] of Object.entries(parse.data)) {
+            if (v === '') continue; // ignore empty string updates (treated as no-op)
             if (v !== undefined && v !== existing[k]) {
                 update[k] = v;
                 changedFields.push(k);

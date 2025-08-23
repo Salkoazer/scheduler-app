@@ -41,6 +41,27 @@ const statusUpdateSchema = z.object({
     reservationStatus: z.enum(['pre','confirmed','flagged'])
 });
 
+// Room canonicalization (support legacy / friendly label variants)
+const ROOM_SYNONYMS = {
+    'room 1': ['room 1', 'Coliseu', 'coliseu'],
+    'room 2': ['room 2', 'Coliseu Club', 'coliseu club'],
+    'room 3': ['room 3', 'Coliseu Palco', 'coliseu palco']
+};
+function canonicalizeRoom(val) {
+    if (!val || typeof val !== 'string') return val;
+    const lower = val.toLowerCase();
+    for (const [canonical, variants] of Object.entries(ROOM_SYNONYMS)) {
+        if (variants.some(v => v.toLowerCase() === lower)) return canonical;
+    }
+    return val; // unknown -> pass through (schema guards may reject later where enforced)
+}
+function synonymsFor(room) {
+    if (!room) return [room];
+    // If canonical known, return all variants (including canonical). If already a variant, resolve canonical first.
+    const canon = canonicalizeRoom(room);
+    return ROOM_SYNONYMS[canon] ? Array.from(new Set(ROOM_SYNONYMS[canon])) : [room];
+}
+
 // Editable fields schema (relaxed). Empty strings will be ignored server-side (treated as no-op) rather than stored.
 const editableFieldsSchema = z.object({
     room: z.enum(['room 1','room 2','room 3']).optional(),
@@ -84,6 +105,10 @@ router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSc
         const db = getDb();
         // Normalize and enrich payload
         // Normalize multi-day dates (non-contiguous supported)
+        // Canonicalize room (supports friendly labels like "Coliseu")
+        if (req.body && req.body.room) {
+            req.body.room = canonicalizeRoom(req.body.room);
+        }
         let providedDates = Array.isArray(req.body.dates) ? req.body.dates.map(d => new Date(d)) : [];
         providedDates = providedDates.filter(d => !isNaN(d.getTime()));
         // Unique by day string
@@ -429,6 +454,10 @@ router.put('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
         if (process.env.NODE_ENV !== 'production') {
             console.log('[UPDATE incoming raw body]', JSON.stringify(req.body));
         }
+        // Canonicalize room if provided (allow friendly label input)
+        if (req.body && req.body.room) {
+            req.body.room = canonicalizeRoom(req.body.room);
+        }
         const parse = editableFieldsSchema.safeParse(req.body || {});
         if (!parse.success) return res.status(400).json({ message: 'Invalid payload', details: parse.error.errors });
         const db = getDb();
@@ -570,10 +599,12 @@ router.get('/history', authenticateToken, async (req, res) => {
         const dayStartIso = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 0, 0, 0, 0)).toISOString();
         const dayEndIso = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 23, 59, 59, 999)).toISOString();
         const db = getDb();
+        // Accept either canonical room value or any friendly synonyms (supports legacy data written before canonicalization)
+        const roomVariants = synonymsFor(room);
         // Include events where the primary date falls in range OR the dates array contains the target day
         const events = await db.collection('reservationHistory')
             .find({
-                room: room,
+                room: { $in: roomVariants },
                 $or: [
                     { date: { $gte: dayStartIso, $lte: dayEndIso } },
                     { dates: { $elemMatch: { $gte: dayStartIso, $lte: dayEndIso } } }

@@ -158,7 +158,8 @@ app.use(ensureCsrfCookie);
 
 // Enforce HTTPS in production (behind proxy/load balancer)
 app.set('trust proxy', 1);
-if (process.env.NODE_ENV === 'production') {
+// Optional HTTPS enforcement: enable only when a TLS listener (ALB / proxy with cert) is in place.
+if (process.env.FORCE_HTTPS === 'true') {
   app.use((req, res, next) => {
     const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
     if (isSecure) return next();

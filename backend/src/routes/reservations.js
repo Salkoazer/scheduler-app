@@ -565,15 +565,19 @@ router.get('/history', authenticateToken, async (req, res) => {
         if (!date || !room) return res.status(400).json({ message: 'date and room are required' });
         const day = new Date(date);
         if (isNaN(day.getTime())) return res.status(400).json({ message: 'Invalid date' });
-        // Normalize date boundaries (match stored ISO date string exactly by day)
-        const dayStartIso = new Date(day.getFullYear(), day.getMonth(), day.getDate()).toISOString();
-        const dayEndIso = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999).toISOString();
+        // Normalize by UTC boundaries to align with how reservation.date & dates[] are stored (midnight UTC)
+        const dayStartIso = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 0, 0, 0, 0)).toISOString();
+        const dayEndIso = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), 23, 59, 59, 999)).toISOString();
         const db = getDb();
+        // Include events where the primary date falls in range OR the dates array contains the target day
         const events = await db.collection('reservationHistory')
             .find({
                 room: room,
-                date: { $gte: dayStartIso, $lte: dayEndIso }
-            })
+                $or: [
+                    { date: { $gte: dayStartIso, $lte: dayEndIso } },
+                    { dates: { $elemMatch: { $gte: dayStartIso, $lte: dayEndIso } } }
+                ]
+            }, { projection: { /* allow full doc */ } })
             .sort({ timestamp: 1 })
             .toArray();
         res.json(events);

@@ -114,8 +114,8 @@ router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSc
         // Unique by day string
         const uniqueDayMap = {};
         providedDates.forEach(d => {
-            // Normalize to midnight UTC for stable day key (avoids timezone offset shifting previous/next day)
-            const dayKey = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();
+            // Normalize to midnight UTC using UTC getters (prevents local TZ offset from shifting stored day)
+            const dayKey = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
             uniqueDayMap[dayKey] = new Date(dayKey);
         });
         const normalizedDates = Object.values(uniqueDayMap).sort((a,b)=>a.getTime()-b.getTime());
@@ -484,7 +484,7 @@ router.put('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
             const parsed = update.dates.map(d => new Date(d)).filter(d => !isNaN(d.getTime()));
             if (parsed.length === 0) return res.status(400).json({ message: 'Invalid dates' });
             const mapDays = {};
-            parsed.forEach(d => { const key = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString(); mapDays[key] = new Date(key); });
+            parsed.forEach(d => { const key = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString(); mapDays[key] = new Date(key); });
             const norm = Object.values(mapDays).sort((a,b)=>a.getTime()-b.getTime());
             // Block moving reservation into the past (earliest day before today UTC)
             const now = new Date();
@@ -612,6 +612,9 @@ router.get('/history', authenticateToken, async (req, res) => {
             }, { projection: { /* allow full doc */ } })
             .sort({ timestamp: 1 })
             .toArray();
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('[history query]', { room, variants: roomVariants, date, count: events.length });
+        }
         res.json(events);
     } catch (e) {
         console.error('Error fetching reservation history:', e);

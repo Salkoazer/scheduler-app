@@ -84,8 +84,9 @@ const allowedOrigins = envAllowed
   ? envAllowed.split(',').map(s => s.trim()).filter(Boolean)
   : [
       'http://localhost:9000',
-      'http://calendariocoliseu.site',
-      'https://calendariocoliseu.site'
+      // Note: Origin header never includes a trailing slash, so omit it here
+      'http://schedule-app-back-env.eu-west-3.elasticbeanstalk.com',
+      'https://schedule-app-back-env.eu-west-3.elasticbeanstalk.com'
     ];
 
 const corsOptions = {

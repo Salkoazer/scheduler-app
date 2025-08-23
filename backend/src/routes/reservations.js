@@ -612,9 +612,6 @@ router.get('/history', authenticateToken, async (req, res) => {
             }, { projection: { /* allow full doc */ } })
             .sort({ timestamp: 1 })
             .toArray();
-        if (process.env.NODE_ENV !== 'production') {
-            console.log('[history query]', { room, variants: roomVariants, date, count: events.length });
-        }
         res.json(events);
     } catch (e) {
         console.error('Error fetching reservation history:', e);

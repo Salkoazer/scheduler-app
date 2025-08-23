@@ -89,12 +89,21 @@ const allowedOrigins = envAllowed
       'https://schedule-app-back-env.eu-west-3.elasticbeanstalk.com'
     ];
 
+// Log the configured allowed origins once at startup
+console.log('[CORS] Allowed origins:', allowedOrigins);
+
 const corsOptions = {
   origin: (origin, callback) => {
-    const reqOrigin = origin || 'null';
-    const isAllowed = !origin || allowedOrigins.includes(reqOrigin);
-    console.log(`[CORS] Origin: ${reqOrigin} -> ${isAllowed ? 'allowed' : 'denied'}`);
-    callback(isAllowed ? null : new Error(`Not allowed by CORS: ${reqOrigin}`), isAllowed);
+    // Allow non-browser (no origin) requests
+    if (!origin) {
+      console.log('[CORS] Origin: <none> -> allowed (no origin header)');
+      return callback(null, true);
+    }
+    const normalized = origin.replace(/\/$/, '');
+    const match = allowedOrigins.find(o => o.replace(/\/$/, '') === normalized);
+    const isAllowed = Boolean(match);
+    console.log(`[CORS] Origin: ${origin} (normalized=${normalized}) -> ${isAllowed ? 'allowed' : 'denied'}`);
+    callback(isAllowed ? null : new Error(`Not allowed by CORS: ${origin}`), isAllowed);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

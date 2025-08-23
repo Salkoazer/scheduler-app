@@ -91,8 +91,6 @@ router.post('/logout', async (req, res) => {
     }
 });
 
-module.exports = router;
-
 // Authenticated user info (whoami)
 router.get('/me', (req, res) => {
     try {
@@ -106,14 +104,19 @@ router.get('/me', (req, res) => {
 });
 
     // Middleware to authenticate via cookie token for protected routes below
-    function requireAuth(req, res, next) {
-        try {
-            const token = (req.cookies && req.cookies.token) || null;
-            if (!token) return res.status(401).json({ message: 'Not authenticated' });
-            const user = verifyAccessToken(token);
-            const username = user.username || user.sub;
-            req.user = { ...user, username };
-            next();
+function requireAuth(req, res, next) {
+    try {
+        const token = (req.cookies && req.cookies.token) || null;
+        if (!token) return res.status(401).json({ message: 'Not authenticated' });
+        const user = verifyAccessToken(token);
+        const username = user.username || user.sub;
+        req.user = { ...user, username };
+        next();
+    } catch (e) {
+        return res.status(401).json({ message: 'Not authenticated' });
+    }
+}
+
 // Refresh endpoint (rotating refresh tokens)
 router.post('/refresh', async (req, res) => {
     try {
@@ -126,7 +129,6 @@ router.post('/refresh', async (req, res) => {
         if (!entry || entry.username !== decoded.sub) {
             return res.status(401).json({ message: 'Refresh token revoked' });
         }
-        // Rotate: delete old record, create new
         await db.collection('refreshTokens').deleteOne({ jti: decoded.jti });
         const role = decoded.role || 'staff';
         const username = decoded.sub;
@@ -148,10 +150,6 @@ router.post('/refresh', async (req, res) => {
         return res.status(401).json({ message: 'Not authenticated' });
     }
 });
-        } catch (e) {
-            return res.status(401).json({ message: 'Not authenticated' });
-        }
-    }
 
     // Admin creates new user (admin or staff)
     const createUserSchema = z.object({
@@ -238,3 +236,5 @@ router.post('/refresh', async (req, res) => {
             res.status(500).json({ message: 'Internal server error' });
         }
     });
+
+module.exports = router;

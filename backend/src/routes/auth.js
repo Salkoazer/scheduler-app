@@ -96,10 +96,12 @@ router.get('/me', (req, res) => {
     try {
         const token = (req.cookies && req.cookies.token) || null;
         if (!token) return res.status(401).json({ message: 'Not authenticated' });
-    const user = verifyAccessToken(token);
-        res.status(200).json({ username: user.username, role: user.role || 'staff' });
+        const user = verifyAccessToken(token);
+        const username = user.username || user.sub;
+        if (!username) return res.status(401).json({ message: 'Not authenticated' });
+        res.status(200).json({ username, role: user.role || 'staff' });
     } catch (e) {
-        res.status(401).json({ message: 'Not authenticated' });
+        return res.status(401).json({ message: 'Not authenticated' });
     }
 });
 

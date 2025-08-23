@@ -210,7 +210,7 @@ connectToDb(mongoUri)
     console.log('Database initialized');
     
   app.listen(port, () => {
-    console.log(`Server is running on port: ${port}`);
+  console.log(`[startup] Server is running on port: ${port} (process.env.PORT=${process.env.PORT || 'undefined'})`);
   });
 })
 .catch(err => {

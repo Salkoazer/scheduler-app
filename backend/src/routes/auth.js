@@ -134,7 +134,6 @@ router.post('/refresh', async (req, res) => {
         await db.collection('refreshTokens').deleteOne({ jti: decoded.jti });
     const role = decoded.role || 'staff';
     const username = decoded.username || decoded.sub;
-    console.log('REFRESH RAW DECODED', decoded);
         const { randomUUID } = require('crypto');
         const newJti = randomUUID();
         const newRefresh = signRefreshToken({ username, role }, newJti);
@@ -148,7 +147,6 @@ router.post('/refresh', async (req, res) => {
         const baseOpts = { httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' };
     res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });
     res.cookie('refresh', newRefresh, { ...baseOpts, maxAge: 1000 * 60 * 60 * 24 * 7 });
-    console.log('REFRESH RESPONSE', { username, role });
     return res.json({ ok: true, username, role, expiresIn: process.env.JWT_ACCESS_TTL || '15m' });
     } catch (e) {
         return res.status(401).json({ message: 'Not authenticated' });

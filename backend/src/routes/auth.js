@@ -143,9 +143,10 @@ router.post('/refresh', async (req, res) => {
         } catch(_){ }
         const isProd = process.env.NODE_ENV === 'production';
         const baseOpts = { httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' };
-        res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });
-        res.cookie('refresh', newRefresh, { ...baseOpts, maxAge: 1000 * 60 * 60 * 24 * 7 });
-        return res.json({ ok: true, username, role, expiresIn: process.env.JWT_ACCESS_TTL || '15m' });
+    res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });
+    res.cookie('refresh', newRefresh, { ...baseOpts, maxAge: 1000 * 60 * 60 * 24 * 7 });
+    console.log('REFRESH RESPONSE', { username, role });
+    return res.json({ ok: true, username, role, expiresIn: process.env.JWT_ACCESS_TTL || '15m' });
     } catch (e) {
         return res.status(401).json({ message: 'Not authenticated' });
     }

@@ -145,7 +145,7 @@ router.post('/refresh', async (req, res) => {
         const baseOpts = { httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' };
         res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });
         res.cookie('refresh', newRefresh, { ...baseOpts, maxAge: 1000 * 60 * 60 * 24 * 7 });
-        return res.json({ ok: true, expiresIn: process.env.JWT_ACCESS_TTL || '15m' });
+        return res.json({ ok: true, username, role, expiresIn: process.env.JWT_ACCESS_TTL || '15m' });
     } catch (e) {
         return res.status(401).json({ message: 'Not authenticated' });
     }

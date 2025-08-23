@@ -170,6 +170,8 @@ app.set('trust proxy', 1);
 // Optional HTTPS enforcement: enable only when a TLS listener (ALB / proxy with cert) is in place.
 if (process.env.FORCE_HTTPS === 'true') {
   app.use((req, res, next) => {
+    // Allow load balancer / monitoring health checks over HTTP without redirect so they get a 200
+    if (req.originalUrl.startsWith('/api/healthcheck')) return next();
     const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
     if (isSecure) return next();
     const host = req.headers.host;

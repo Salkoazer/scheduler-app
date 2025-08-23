@@ -118,6 +118,15 @@ router.post('/', authenticateToken, writeRateLimiter, validateBody(reservationSc
             reservationStatus: 'pre'
         };
 
+        // Prevent creating reservations entirely in the past (earliest day before today UTC)
+        try {
+            const now = new Date();
+            const todayUtcStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+            if (normalizedDates.length && normalizedDates[0] < todayUtcStart) {
+                return res.status(400).json({ message: 'Cannot create reservation in the past' });
+            }
+        } catch (_) { /* fail-open not desired; silently ignore errors computing date */ }
+
         console.log('Creating reservation with date:', reservation.date);
 
         const result = await db.collection('reservations').insertOne(reservation);
@@ -447,6 +456,10 @@ router.put('/:id', authenticateToken, writeRateLimiter, async (req, res) => {
             const mapDays = {};
             parsed.forEach(d => { const key = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString(); mapDays[key] = new Date(key); });
             const norm = Object.values(mapDays).sort((a,b)=>a.getTime()-b.getTime());
+            // Block moving reservation into the past (earliest day before today UTC)
+            const now = new Date();
+            const todayUtcStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+            if (norm[0] < todayUtcStart) return res.status(400).json({ message: 'Cannot set reservation dates in the past' });
             update.dates = norm.map(d => d.toISOString());
             update.date = norm[0].toISOString();
             update.endDate = norm[norm.length-1].toISOString();

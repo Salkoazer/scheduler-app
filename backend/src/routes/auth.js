@@ -202,6 +202,14 @@ router.post('/refresh', async (req, res) => {
             const db = getDb();
             const user = await db.collection('credentials').findOne({ username });
             if (!user) return res.status(404).json({ message: 'User not found' });
+            // Prevent a user (even admin) from modifying their own role or password to avoid accidental lockout/demotion
+            const isSelf = req.user.username && req.user.username === username;
+            if (isSelf && (role && role !== user.role)) {
+                return res.status(400).json({ message: 'Cannot change your own role' });
+            }
+            if (isSelf && password) {
+                return res.status(400).json({ message: 'Cannot change your own password via this admin endpoint' });
+            }
             const update = {};
             if (role) update.role = role;
             if (password) update.password = await bcrypt.hash(password, 10);
@@ -216,6 +224,29 @@ router.post('/refresh', async (req, res) => {
             if (newUsername) {
                 await db.collection('reservations').updateMany({ author: username }, { $set: { author: newUsername, authorLc: newUsername.toLowerCase() } });
                 await db.collection('reservationHistory').updateMany({ user: username }, { $set: { user: newUsername } });
+            }
+            // If the admin is modifying their OWN username, rotate access & refresh tokens so subsequent self-delete still blocked
+            if (newUsername && req.user.username && req.user.username === username) {
+                try {
+                    // Invalidate prior refresh tokens for old username (best-effort)
+                    await db.collection('refreshTokens').deleteMany({ username });
+                    const effectiveRole = (role || user.role || 'staff');
+                    const { randomUUID } = require('crypto');
+                    const newJti = randomUUID();
+                    const newRefresh = signRefreshToken({ username: newUsername, role: effectiveRole }, newJti);
+                    try {
+                        const decoded = verifyRefreshToken(newRefresh);
+                        await db.collection('refreshTokens').insertOne({ jti: newJti, username: newUsername, role: effectiveRole, createdAt: new Date(), expiresAt: new Date(decoded.exp * 1000) });
+                    } catch(_) {}
+                    const access = signAccessToken({ username: newUsername, role: effectiveRole });
+                    const isProd = process.env.NODE_ENV === 'production';
+                    const baseOpts = { httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' };
+                    res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });
+                    res.cookie('refresh', newRefresh, { ...baseOpts, maxAge: 1000 * 60 * 60 * 24 * 7 });
+                } catch (e) {
+                    // Non-fatal; tokens will be refreshed on next manual login if this fails
+                    console.warn('Failed to rotate tokens after username change:', e.message);
+                }
             }
             res.json({ message: 'User updated' });
         } catch (e) {
@@ -240,3 +271,48 @@ router.post('/refresh', async (req, res) => {
     });
 
 module.exports = router;
+
+// --- Admin password change (admin can change own password) ---
+// Restricted to admins only. Ordinary staff cannot change passwords directly.
+const selfPasswordSchema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(6)
+});
+
+router.post('/change-password', requireAuth, validateBody(selfPasswordSchema), async (req, res) => {
+    try {
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Forbidden' });
+        }
+        const { currentPassword, newPassword } = req.body;
+        const db = getDb();
+        const userDoc = await db.collection('credentials').findOne({ username: req.user.username });
+        if (!userDoc) return res.status(404).json({ message: 'User not found' });
+        const match = await bcrypt.compare(currentPassword, userDoc.password);
+        if (!match) return res.status(400).json({ message: 'Current password incorrect' });
+        if (await bcrypt.compare(newPassword, userDoc.password)) {
+            return res.status(400).json({ message: 'New password must be different' });
+        }
+        const hashed = await bcrypt.hash(newPassword, 10);
+        await db.collection('credentials').updateOne({ _id: userDoc._id }, { $set: { password: hashed, passwordChangedAt: new Date() } });
+        // Invalidate all refresh tokens for this user (global logout)
+        await db.collection('refreshTokens').deleteMany({ username: req.user.username });
+        // Issue new tokens (fresh session)
+        const { randomUUID } = require('crypto');
+        const jti = randomUUID();
+        const refresh = signRefreshToken({ username: req.user.username, role: req.user.role }, jti);
+        try {
+            const dec = verifyRefreshToken(refresh);
+            await db.collection('refreshTokens').insertOne({ jti, username: req.user.username, role: req.user.role, createdAt: new Date(), expiresAt: new Date(dec.exp * 1000) });
+        } catch(_) {}
+        const access = signAccessToken({ username: req.user.username, role: req.user.role });
+        const isProd = process.env.NODE_ENV === 'production';
+        const baseOpts = { httpOnly: true, secure: isProd, sameSite: isProd ? 'none' : 'lax' };
+        res.cookie('token', access, { ...baseOpts, maxAge: 1000 * 60 * 60 * 2 });
+        res.cookie('refresh', refresh, { ...baseOpts, maxAge: 1000 * 60 * 60 * 24 * 7 });
+        return res.json({ message: 'Password changed' });
+    } catch (e) {
+        console.error('Self password change error', e);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+});

@@ -273,8 +273,10 @@ router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) 
         const fromStatus = existing.reservationStatus || 'pre';
 
         // Concurrency guard for promoting to confirmed/flagged with self-healing of stale confirmed_flags
+        // If simply switching between confirmed <-> flagged for the SAME reservation, we already own the flags; skip re-claim.
+        const switchingWithinOwned = ['confirmed','flagged'].includes(fromStatus) && ['confirmed','flagged'].includes(newStatus);
         let claimedDays = [];
-        if (['confirmed','flagged'].includes(newStatus)) {
+        if (['confirmed','flagged'].includes(newStatus) && !switchingWithinOwned) {
             const days = (existing.dates && existing.dates.length>0 ? existing.dates : [existing.date]).map(d => d.slice(0,10));
             let attemptedHeal = false;
             while (true) {
@@ -306,6 +308,13 @@ router.put('/:id/status', authenticateToken, writeRateLimiter, async (req, res) 
                                     claimedDays = [];
                                 }
                                 continue; // retry claim
+                            }
+                            // If not stale, check if the conflicting flags actually belong to this reservation already (switch case)
+                            const ownership = await db.collection('confirmed_flags').findOne({ room: existing.room, day: days[0] });
+                            if (ownership && ownership.reservationId && ownership.reservationId.equals(existing._id)) {
+                                // Already ours; treat as success
+                                claimedDays = [];
+                                break;
                             }
                         }
                         // Conflict remains or already healed once -> abort

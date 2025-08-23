@@ -145,6 +145,14 @@ app.use(cookieParser());
 // Apply secure headers middleware
 app.use(secureHeaders);
 
+// Override / sanitize Permissions-Policy header to avoid unsupported feature warnings in browsers.
+// Some upstream layers (proxy / platform) may inject experimental directives that Chrome logs warnings for.
+app.use((req, res, next) => {
+  // Replace any existing header with a conservative minimal policy (disallow everything explicitly listed)
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
+  next();
+});
+
 // CSRF: ensure token cookie on safe methods
 app.use(ensureCsrfCookie);
 
